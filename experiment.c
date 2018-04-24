@@ -17,8 +17,22 @@
 =====================================================*/
 
 
-int main()
-{   pid_t child;
+int main(int argc, char** argv)  {
+
+
+  if(argc != 2) {
+    fprintf(stderr, "Usage: %s <by_sys_call / by_instruction>\n", argv[0]);
+    exit(EXIT_FAILURE);
+  }
+
+    char* command = argv[1];
+
+
+  pid_t child;
+
+  if (strcmp(command, "by_sys_call") == 0)  {
+
+
   long orig_eax;
   child = fork();
   if(child == 0) {
@@ -36,8 +50,38 @@ int main()
       }
       printf("The child made a "
       "system call %llu\n", regs.orig_rax);
-      ptrace(PTRACE_CONT, child, NULL, NULL);
+            getchar();
+      ptrace(PTRACE_SYSCALL, child, NULL, NULL);
     }
   }
+} else if (strcmp(command, "by_instruction") == 0)  {
+
+
+
+  long orig_eax;
+  child = fork();
+  if(child == 0) {
+    ptrace(PTRACE_TRACEME, 0, NULL, NULL);
+    execl("/bin/ls", "ls", NULL);
+  }
+  else {
+
+
+    struct user_regs_struct regs;
+    while (wait(NULL) != -1)  {
+      if(ptrace(PTRACE_GETREGS, child, NULL, &regs)) {
+        perror("ptrace GETREGS failed");
+        exit(2);
+      }
+      printf("instruction: %p\n", (void*)regs.rip); /* instruction pointer */
+      getchar();
+      ptrace(PTRACE_SINGLESTEP, child, NULL, NULL);
+
+    }
+  }
+} else {
+  fprintf(stderr, "Invalid input. Input options: by_sys_call / by_instruction\n");
+  exit(EXIT_FAILURE);
+}
   return 0;
 }
