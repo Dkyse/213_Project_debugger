@@ -14,6 +14,10 @@
 /*=====================================================
 = This is a toy program.                            =
 = I made this to experiment with ptrace.            =
+= To run the program, input "experiment by_sys_call"=
+= or "experiment by_instruction". It will run the   =
+= program step by step, stopping at each system     =
+= calls or instruction. Hit enter to continue       =
 =====================================================*/
 
 
