@@ -34,11 +34,7 @@ int main(int argc, char** argv)  {
   char* command = argv[2];
   char* user_program = argv[1];
 
-
-
-
   pid_t child;
-
 
   long orig_eax;
   child = fork();
