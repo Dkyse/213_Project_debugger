@@ -24,6 +24,8 @@
 int main(int argc, char** argv)  {
 
 
+  /* check and store arguments */
+
   if(argc != 3) {
     fprintf(stderr, "Usage: %s <program path> <by_sys_call / by_instruction>\n", argv[0]);
     exit(EXIT_FAILURE);
@@ -33,61 +35,57 @@ int main(int argc, char** argv)  {
   char* user_program = argv[1];
 
 
+
+
   pid_t child;
 
-  if (strcmp(command, "by_sys_call") == 0)  {
 
+  long orig_eax;
+  child = fork();
+  if(child == 0) {
 
-    long orig_eax;
-    child = fork();
-    if(child == 0) {
-      ptrace(PTRACE_TRACEME, 0, NULL, NULL);
+    /* we are in the child program. Run the debuggee */
+    ptrace(PTRACE_TRACEME, 0, NULL, NULL);
 
+    /* TODO: add command line arguments */
+    execl(user_program, user_program, NULL);
 
-      /* TODO: add command line arguments */
-      execl(user_program, user_program, NULL);
-    } else {
+  } else {
 
+    /* we are in the parent program. Run the debugger */
 
-      struct user_regs_struct regs;
-      while (wait(NULL))  {
-        if(ptrace(PTRACE_GETREGS, child, NULL, &regs)) {
-          perror("ptrace GETREGS failed");
-          exit(2);
-        }
+    /* A struct to store debuggee status */
+    struct user_regs_struct regs;
+
+    while (wait(NULL))  {
+
+      if(ptrace(PTRACE_GETREGS, child, NULL, &regs)) {
+        perror("ptrace GETREGS failed");
+        exit(2);
+      }
+
+/* parse user instructions */
+      if (strcmp(command, "by_sys_call") == 0)  {
+
         printf("The child made a "
         "system call %llu\n", regs.orig_rax);
         getchar();
-        ptrace(PTRACE_SYSCALL, child, NULL, NULL);
-      }
-    }
-  } else if (strcmp(command, "by_instruction") == 0)  {
-    long orig_eax;
-    child = fork();
-    if(child == 0) {
-      ptrace(PTRACE_TRACEME, 0, NULL, NULL);
 
-      /* TODO: add command line arguments */
-      execl(user_program, user_program, NULL);
+      } else if (strcmp(command, "by_instruction") == 0)  {
 
-    }  else {
-
-
-      struct user_regs_struct regs;
-      while (wait(NULL) != -1)  {
-        if(ptrace(PTRACE_GETREGS, child, NULL, &regs)) {
-          perror("ptrace GETREGS failed");
-          exit(2);
-        }
         printf("instruction: %p\n", (void*)regs.rip); /* instruction pointer */
         getchar();
-        ptrace(PTRACE_SINGLESTEP, child, NULL, NULL);
+
+      }  else  {
+
+        fprintf(stderr, "Invalid input. Input options: by_sys_call / by_instruction\n");
+        exit(EXIT_FAILURE);
 
       }
+
+      ptrace(PTRACE_SYSCALL, child, NULL, NULL);
     }
-  } else {
-    fprintf(stderr, "Invalid input. Input options: by_sys_call / by_instruction\n");
-    exit(EXIT_FAILURE);
   }
+
   return 0;
 }
