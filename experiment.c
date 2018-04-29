@@ -64,7 +64,7 @@ int main(int argc, char** argv)  {
         exit(2);
       }
 
-/* parse user instructions */
+      /* parse user instructions */
       if (strcmp(command, "by_sys_call") == 0)  {
 
         printf("The child made a "
