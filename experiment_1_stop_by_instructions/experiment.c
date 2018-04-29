@@ -24,29 +24,40 @@
 int main(int argc, char** argv)  {
 
 
+
+
+
   /* check and store arguments */
 
-  if(argc != 3) {
-    fprintf(stderr, "Usage: %s <program path> <by_sys_call / by_instruction>\n", argv[0]);
-    exit(EXIT_FAILURE);
-  }
+  if(argc < 2) {
+     fprintf(stderr, "Usage: %s <by_sys_call / by_instruction> <program path> <program command inputs>\n", argv[0]);
+     exit(EXIT_FAILURE);
+   }
 
-  char* command = argv[2];
-  char* user_program = argv[1];
+   char* command = argv[1];
+   char* user_program = argv[2];
 
-  pid_t child;
+   char* inputs[argc - 2];
+   inputs[0] = argv[2];
+   for(int i = 3; i < argc; i++){
+     inputs[i-2] = argv[i];
+   }
+   inputs[argc-2] = NULL;
 
-  long orig_eax;
-  child = fork();
-  if(child == 0) {
+   pid_t child;
 
-    /* we are in the child program. Run the debuggee */
-    ptrace(PTRACE_TRACEME, 0, NULL, NULL);
+   long orig_eax;
+   child = fork();
+   if(child == 0) {
 
-    /* TODO: add command line arguments */
-    execl(user_program, user_program, NULL);
+     /* we are in the child program. Run the debuggee */
+     ptrace(PTRACE_TRACEME, 0, NULL, NULL);
 
-  } else {
+     //added command line arguments
+     execv(inputs[0], inputs);
+
+
+   } else {
 
     /* we are in the parent program. Run the debugger */
 
