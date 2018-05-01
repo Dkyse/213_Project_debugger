@@ -31,6 +31,7 @@ using dwarf::compilation_unit;
 * @param ip  [description]
 */
 void print_line_info(const std::vector<compilation_unit> cus, void* ip)  {
+  bool found = false;
   dwarf::line_table lt;
   for (auto cu : cus)  {
     lt = cu.get_line_table();
@@ -38,7 +39,12 @@ void print_line_info(const std::vector<compilation_unit> cus, void* ip)  {
     if (entry != lt.end())  {
       printf("File path: %s\n", entry->file->path.c_str());
       printf("Called from line %u\n\n", entry->line);
+      found = true;
+      break;
     }
+  }
+  if (!found) {
+    printf("Instruction %p not found", ip);
   }
 }
 
@@ -69,7 +75,7 @@ int main(int argc, char** argv)  {
   long orig_eax;
 
   /* Using libelfin to trace line numbers. */
-  int fd = open(inputs[0], 'r');
+  int fd = open(inputs[0], O_RDONLY);
   if (fd < 0) {
     fprintf(stderr, "%s: %s\n", inputs[0], strerror(errno));
     return 1;
@@ -82,7 +88,10 @@ int main(int argc, char** argv)  {
   /* end of libelfin preparations */
 
   child = fork();
-  if(child == 0) {
+  if (child == -1)  {
+    fprintf(stderr, "Failed to for process.\n");
+    exit(EXIT_FAILURE);
+  } else if (child == 0) {
 
     /* we are in the child program. Run the debuggee */
     ptrace(PTRACE_TRACEME, 0, NULL, NULL);
@@ -100,7 +109,7 @@ int main(int argc, char** argv)  {
 
       if(ptrace(PTRACE_GETREGS, child, NULL, &regs)) {
         perror("ptrace GETREGS failed");
-        exit(2);
+        exit(EXIT_FAILURE);
       }
 
       /* parse user instructions */
