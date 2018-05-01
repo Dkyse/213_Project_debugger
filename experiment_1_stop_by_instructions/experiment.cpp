@@ -47,7 +47,7 @@ int main(int argc, char** argv)  {
 
   /* check and store arguments */
 
-  if(argc < 2) {
+  if(argc < 3) {
     fprintf(stderr, "Usage: %s <by_sys_call / by_instruction> <program path> <program command inputs>\n", argv[0]);
     exit(EXIT_FAILURE);
   }
@@ -55,12 +55,14 @@ int main(int argc, char** argv)  {
   char* command = argv[1];
   char* user_program = argv[2];
 
-  char* inputs[argc - 2];
+  // Parse command line inputs
+  char* inputs[argc - 1];
   inputs[0] = argv[2];
   for(int i = 3; i < argc; i++){
     inputs[i-2] = argv[i];
   }
   inputs[argc-2] = NULL;
+
 
   pid_t child;
 
