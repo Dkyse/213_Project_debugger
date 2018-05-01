@@ -9,8 +9,11 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include <debuglib.h>
+#include <fcntl.h>
+#include "elf++.hh"
+#include "dwarf++.hh"
 
+using dwarf::compilation_unit;
 
 /*=====================================================
 = This is a toy program.                            =
@@ -22,30 +25,67 @@
 =====================================================*/
 
 
-int main(int argc, char** argv)  {
+/**
+* [print_line_number description]
+* @param cus [description]
+* @param ip  [description]
+*/
+void print_line_info(const std::vector<compilation_unit> cus, void* ip)  {
+  dwarf::line_table lt;
+  for (auto cu : cus)  {
+    lt = cu.get_line_table();
+    auto entry = lt.find_address((unsigned long)ip);
+    if (entry != lt.end())  {
+      printf("File path: %s\n", entry->file->path.c_str());
+      printf("Called from line %u\n\n", entry->line);
+    }
+  }
+}
 
+
+int main(int argc, char** argv)  {
 
   /* check and store arguments */
 
-  if(argc != 3) {
-    fprintf(stderr, "Usage: %s <program path> <by_sys_call / by_instruction>\n", argv[0]);
+  if(argc < 2) {
+    fprintf(stderr, "Usage: %s <by_sys_call / by_instruction> <program path> <program command inputs>\n", argv[0]);
     exit(EXIT_FAILURE);
   }
 
-  char* command = argv[2];
-  char* user_program = argv[1];
+  char* command = argv[1];
+  char* user_program = argv[2];
+
+  char* inputs[argc - 2];
+  inputs[0] = argv[2];
+  for(int i = 3; i < argc; i++){
+    inputs[i-2] = argv[i];
+  }
+  inputs[argc-2] = NULL;
 
   pid_t child;
 
   long orig_eax;
+
+  /* Using libelfin to trace line numbers. */
+  int fd = open(inputs[0], 'r');
+  if (fd < 0) {
+    fprintf(stderr, "%s: %s\n", inputs[0], strerror(errno));
+    return 1;
+  }
+
+  elf::elf elf(elf::create_mmap_loader(fd));
+  dwarf::dwarf dwarf(dwarf::elf::create_loader(elf));
+
+  const std::vector<compilation_unit> compilation_units = dwarf.compilation_units();
+  /* end of libelfin preparations */
+
   child = fork();
   if(child == 0) {
 
     /* we are in the child program. Run the debuggee */
     ptrace(PTRACE_TRACEME, 0, NULL, NULL);
-
-    /* TODO: add command line arguments */
-    execl(user_program, user_program, NULL);
+    //added command line arguments
+    execv(inputs[0], inputs);
 
   } else {
 
@@ -71,6 +111,7 @@ int main(int argc, char** argv)  {
       } else if (strcmp(command, "by_instruction") == 0)  {
 
         printf("instruction: %p\n", (void*)regs.rip); /* instruction pointer */
+        print_line_info(compilation_units, (void*)regs.rip);
         getchar();
 
       }  else  {
