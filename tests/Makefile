@@ -1,4 +1,4 @@
 ROOT = ..
-TARGETS = experiment
+TARGETS = test
 
 include $(ROOT)/common.mk
