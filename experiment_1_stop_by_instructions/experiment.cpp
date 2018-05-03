@@ -7,22 +7,21 @@
 #define _GNU_SOURCE
 #endif
 
+#include <errno.h>
+#include <fcntl.h>
+#include <link.h>
+#include <stdio.h>
 #include <sys/ptrace.h>
 #include <sys/types.h>
 #include <sys/wait.h>
-#include <unistd.h>
-#include <stdio.h>
 #include <sys/user.h>
-#include <errno.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include <fcntl.h>
-#include <link.h>
 
-#include <vector>
 #include <string>
+#include <vector>
 
 #include "elf++.hh"
 #include "dwarf++.hh"
@@ -30,15 +29,6 @@
 using dwarf::compilation_unit;
 using std::vector;
 using std::string;
-
-/*=====================================================
-= This is a toy program.                            =
-= I made this to experiment with ptrace.            =
-= To run the program, input "experiment by_sys_call"=
-= or "experiment by_instruction". It will run the   =
-= program step by step, stopping at each system     =
-= calls or instruction. Hit enter to continue       =
-=====================================================*/
 
 typedef struct shared_obj {
   unsigned long addr_start; // Start address of object
@@ -51,12 +41,13 @@ typedef struct shared_obj {
 * @param cus [description]
 * @param ip  [description]
 */
-void print_line_info(const vector<compilation_unit> cus, void* ip)  {
+void print_line_info(const vector<compilation_unit> cus, unsigned long ip)  {
   bool found = false;
   dwarf::line_table lt;
+  // TODO do we really need to iterate over all cu's? We only the CU of the executable.
   for (auto cu : cus)  {
     lt = cu.get_line_table();
-    auto entry = lt.find_address((unsigned long)ip);
+    auto entry = lt.find_address(ip);
     if (entry != lt.end())  {
       printf("File path: %s\n", entry->file->path.c_str());
       printf("Called from line %u\n\n", entry->line);
@@ -65,29 +56,9 @@ void print_line_info(const vector<compilation_unit> cus, void* ip)  {
     }
   }
   if (!found) {
-    // printf("Instruction %p not found", ip);
+    printf("Instruction %lx not found\n", ip);
   }
 }
-
-
-
-// static int callback(struct dl_phdr_info *info, size_t size, void *data) {
-//   int j;
-//   // printf("name=%s (%d segments)\n", info->dlpi_name,
-//   // info->dlpi_phnum);
-//
-//   shared_obj_t obj;
-//   obj.name = info->dlpi_name;
-//   obj.addr = info->dlpi_addr;
-//
-//   for (j = 0; j < info->dlpi_phnum; j++)
-//   printf("\t\t header %2d: address=%10p\n", j,
-//   (void *) (info->dlpi_addr + info->dlpi_phdr[j].p_vaddr));
-//   return 0;
-// }
-//
-//
-
 
 enum COMMAND { SYS, INST };
 
@@ -157,10 +128,21 @@ int main(int argc, char** argv)  {
     exit(EXIT_FAILURE);
   }
 
+  // Parse command line inputs
+  enum COMMAND command;
   char* command_str = argv[1];
   char* user_program = argv[2];
 
-  // Parse command line inputs
+  if (strcmp(command_str, "by_sys_call") == 0) {
+    command = SYS;
+  } else if (strcmp(command_str, "by_instruction") == 0) {
+    command = INST;
+  } else {
+    fprintf(stderr, "Invalid input. Input options: by_sys_call / by_instruction\n");
+    exit(EXIT_FAILURE);
+  }
+
+  // Process command line inputs to pass them to execv
   char* inputs[argc - 1];
   inputs[0] = argv[2];
   for(int i = 3; i < argc; i++){
@@ -169,21 +151,13 @@ int main(int argc, char** argv)  {
   inputs[argc-2] = NULL;
 
   vector<shared_obj_t> shared_objs;
-  //
-  //
-  //
-  // /* get lib info */
-  // dl_iterate_phdr(callback, vector);
-
   pid_t child;
-
-  long orig_eax;
 
   /* Using libelfin to trace line numbers. */
   int fd = open(inputs[0], O_RDONLY);
   if (fd < 0) {
     fprintf(stderr, "%s: %s\n", inputs[0], strerror(errno));
-    return 1;
+    exit(EXIT_FAILURE);
   }
 
   elf::elf elf(elf::create_mmap_loader(fd));
@@ -206,25 +180,28 @@ int main(int argc, char** argv)  {
   } else {
     /* we are in the parent program. Run the debugger */
 
-    // Parse debugee's memory maps
-    int ret = populate_maps(child, shared_objs);
-    if (ret) {
+    // Wait for child to execute new process
+    // TODO there's probably a better way
+    int status;
+    pid_t ret = waitpid(child, &status, 0);
+    // Let child advance to next instruction
+    ptrace(PTRACE_SINGLESTEP, child, NULL, NULL);
+
+    // Parse child's memory maps
+    if (populate_maps(child, shared_objs)) {
       perror("Failed to parse child's map file.");
       exit(EXIT_FAILURE);
     }
 
+    printf("SHARED OBJECT TABLE\n");
+    for (auto obj : shared_objs) {
+      printf("%lx-%lx\t%s\n", obj.addr_start, obj.addr_end, obj.name.c_str());
+    }
+    getchar();
+    printf("\n\n");
+
     /* A struct to store debuggee status */
     struct user_regs_struct regs;
-
-    enum COMMAND command;
-    if (strcmp(command_str, "by_sys_call") == 0) {
-      command = SYS;
-    } else if (strcmp(command_str, "by_instruction") == 0) {
-      command = INST;
-    } else {
-      fprintf(stderr, "Invalid input. Input options: by_sys_call / by_instruction\n");
-      exit(EXIT_FAILURE);
-    }
 
     while (wait(NULL))  {
 
@@ -236,8 +213,7 @@ int main(int argc, char** argv)  {
       /* parse user instructions */
       if (command == SYS)  {
 
-        printf("The child made a "
-        "system call %llu\n", regs.orig_rax);
+        printf("The child made a system call %llu\n", regs.orig_rax);
         getchar();
         ptrace(PTRACE_SYSCALL, child, NULL, NULL);
       } else if (command == INST)  {
@@ -247,15 +223,15 @@ int main(int argc, char** argv)  {
             printf("instruction: %p | file: %s\n", (void*)regs.rip, obj.name.c_str()); /* instruction pointer */
 
             if (regs.rip < 0x700000000000) {
-              print_line_info(compilation_units, (void*)(regs.rip-obj.addr_start));
+              print_line_info(compilation_units, regs.rip);
               getchar();
             }
+            break;
           }
         }
 
-
-
-        ptrace(PTRACE_SINGLESTEP, child, NULL, NULL);
+        ptrace(PTRACE_SYSCALL, child, NULL, NULL);
+        // ptrace(PTRACE_SINGLESTEP, child, NULL, NULL);
       }
     }
   }
