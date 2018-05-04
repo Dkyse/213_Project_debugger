@@ -26,6 +26,9 @@
 #include "elf++.hh"
 #include "dwarf++.hh"
 
+// TODO remove
+#include <inttypes.h>
+
 using dwarf::compilation_unit;
 using std::vector;
 using std::string;
@@ -36,31 +39,56 @@ typedef struct shared_obj {
   string name; // Object name
 } shared_obj_t;
 
+/***************************
+* BEGIN TESTING FUNCTIONS *
+***************************/
+void
+dump_line_table(const dwarf::line_table &lt)
+{
+  for (auto &line : lt) {
+    if (line.end_sequence)
+    printf("\n");
+    else
+    printf("%-40s%8d%#20" PRIx64 "\n", line.file->path.c_str(),
+    line.line, line.address);
+  }
+}
+
+void
+dump_all_line_tables(const std::vector<compilation_unit> &cus) {
+  for (auto cu : cus) {
+    printf("--- <%x>\n", (unsigned int)cu.get_section_offset());
+    dump_line_table(cu.get_line_table());
+    printf("\n");
+  }
+}
+/*************************
+* END TESTING FUNCTIONS *
+*************************/
+
 /**
 * [print_line_number description]
 * @param cus [description]
 * @param ip  [description]
 */
-void print_line_info(const vector<compilation_unit> cus, unsigned long ip)  {
+bool print_line_info(const vector<compilation_unit> cus, shared_obj_t &obj, unsigned long rip)  {
+  unsigned long file_off = rip-obj.addr_start;
   bool found = false;
   dwarf::line_table lt;
   // TODO do we really need to iterate over all cu's? We only the CU of the executable.
   for (auto cu : cus)  {
     lt = cu.get_line_table();
-    auto entry = lt.find_address(ip);
+    auto entry = lt.find_address(file_off);
     if (entry != lt.end())  {
+      printf("rip: %p | off: %lx | file: %s\n", (void*)rip, file_off, entry->file->path.c_str());
       printf("File path: %s\n", entry->file->path.c_str());
       printf("Called from line %u\n\n", entry->line);
       found = true;
       break;
     }
   }
-  if (!found) {
-    printf("Instruction %lx not found\n", ip);
-  }
+  return found;
 }
-
-enum COMMAND { SYS, INST };
 
 /**
 * [populate_maps description]
@@ -123,32 +151,21 @@ int main(int argc, char** argv)  {
 
   /* check and store arguments */
 
-  if(argc < 3) {
-    fprintf(stderr, "Usage: %s <by_sys_call / by_instruction> <program path> <program command inputs>\n", argv[0]);
+  if(argc < 2) {
+    fprintf(stderr, "Usage: %s <program path> <program command inputs>\n", argv[0]);
     exit(EXIT_FAILURE);
   }
 
-  // Parse command line inputs
-  enum COMMAND command;
-  char* command_str = argv[1];
-  char* user_program = argv[2];
+  char* user_program = argv[1];
 
-  if (strcmp(command_str, "by_sys_call") == 0) {
-    command = SYS;
-  } else if (strcmp(command_str, "by_instruction") == 0) {
-    command = INST;
-  } else {
-    fprintf(stderr, "Invalid input. Input options: by_sys_call / by_instruction\n");
-    exit(EXIT_FAILURE);
-  }
 
   // Process command line inputs to pass them to execv
-  char* inputs[argc - 1];
-  inputs[0] = argv[2];
-  for(int i = 3; i < argc; i++){
-    inputs[i-2] = argv[i];
+  char* inputs[argc];
+  inputs[0] = argv[1];
+  for(int i = 2; i < argc; i++) {
+    inputs[i-1] = argv[i];
   }
-  inputs[argc-2] = NULL;
+  inputs[argc-1] = NULL;
 
   vector<shared_obj_t> shared_objs;
   pid_t child;
@@ -200,8 +217,17 @@ int main(int argc, char** argv)  {
     getchar();
     printf("\n\n");
 
+    printf("LINE TABLES\n");
+    dump_all_line_tables(compilation_units);
+    getchar();
+    printf("\n\n");
+
+
     /* A struct to store debuggee status */
     struct user_regs_struct regs;
+
+
+    printf("Loading environment......\n\n\n");
 
     while (wait(NULL))  {
 
@@ -210,29 +236,22 @@ int main(int argc, char** argv)  {
         exit(EXIT_FAILURE);
       }
 
-      /* parse user instructions */
-      if (command == SYS)  {
+      // printf("inst: %p\n", (void*)regs.rip);
 
-        printf("The child made a system call %llu\n", regs.orig_rax);
-        getchar();
-        ptrace(PTRACE_SYSCALL, child, NULL, NULL);
-      } else if (command == INST)  {
-        /* for each instruction call, check which lib did it come from */
+      /* for each instruction call, check which lib did it come from */
+      if (regs.rip < 0x700000000000) {
         for (auto obj : shared_objs) {
           if (obj.addr_start <= regs.rip && regs.rip <= obj.addr_end) {
-            printf("instruction: %p | file: %s\n", (void*)regs.rip, obj.name.c_str()); /* instruction pointer */
-
-            if (regs.rip < 0x700000000000) {
-              print_line_info(compilation_units, regs.rip);
+            bool found = print_line_info(compilation_units, obj, regs.rip);
+            if (found) {
               getchar();
             }
             break;
           }
         }
-
-        ptrace(PTRACE_SYSCALL, child, NULL, NULL);
-        // ptrace(PTRACE_SINGLESTEP, child, NULL, NULL);
       }
+
+      ptrace(PTRACE_SINGLESTEP, child, NULL, NULL);
     }
   }
 
