@@ -99,7 +99,7 @@ dwarf::line_table::iterator get_line_entry_from_ip(const std::vector<compilation
 * Source:
 * https://blog.tartanllama.xyz/writing-a-linux-debugger-source-signal/
 */
-dwarf::line_table::iterator get_line_entry_from_function(const std::vector<compilation_unit> compilation_units, const std::string& name) {
+dwarf::line_table::iterator get_line_entry_from_function(const std::vector<compilation_unit> &compilation_units, const std::string& name) {
   /* walk through the each compilation unit's line table to find the line */
   for (const auto& cu : compilation_units) {
     for (const auto& die : cu.root()) {
@@ -276,6 +276,7 @@ int main(int argc, char** argv)  {
     // TODO ask Derek how to wait for clone/fork/exec
     int status;
     pid_t ret = waitpid(child, &status, 0);
+    ptrace(PTRACE_SETOPTIONS, child, NULL, PTRACE_O_TRACEFORK | PTRACE_O_TRACEVFORK | PTRACE_O_TRACECLONE);
 
     /* Let child advance to next instruction */
     ptrace(PTRACE_SINGLESTEP, child, NULL, NULL);
@@ -296,30 +297,36 @@ int main(int argc, char** argv)  {
     printf("\n\n");
 
     /* Set breakpoint for child's main function. */
-    try {
-      // We assume the main executable is the first entry of the maps table
-      auto entry = get_line_entry_from_function(shared_objs[0].compilation_units, "main");
-      breakpoint bp {child, (intptr_t)entry->address};
-      bp.enable();
-      // Continue until we reach the breakpoint
-      ptrace(PTRACE_CONT, child, NULL, NULL);
-      waitpid(child, &status, 0);
-
-      // Breakpoint reached, advance to next instruction
-      bp.disable();
-      ptrace(PTRACE_SINGLESTEP, child, NULL, NULL);
-    } catch(std::out_of_range &e) {
-      fprintf(stderr, "'%s' main function not found", inputs[0]);
-    }
+    // try {
+    //   // We assume the main executable is the first entry of the maps table
+    //   auto entry = get_line_entry_from_function(shared_objs[0].compilation_units, "main");
+    //   breakpoint bp {child, (intptr_t)(entry->address + shared_objs[0].addr_start)};
+    //   bp.enable();
+    //   // Continue until we reach the breakpoint
+    //   ptrace(PTRACE_CONT, child, NULL, NULL);
+    //   waitpid(child, &status, 0);
+    //
+    //   // Breakpoint reached, advance to next instruction
+    //   bp.disable();
+    //   ptrace(PTRACE_SINGLESTEP, child, NULL, NULL);
+    // } catch(std::out_of_range &e) {
+    //   fprintf(stderr, "'%s' main function not found", inputs[0]);
+    // }
 
     /* A struct to store debuggee status */
     struct user_regs_struct regs;
 
-    while (wait(NULL) != -1)  {
-      if(ptrace(PTRACE_GETREGS, child, NULL, &regs)) {
-        /* We don't know how to recover from this if ptrace fails. So we break */
+
+    while (1)  {
+      pid_t current = waitpid(-1, &status, P_ALL);
+      // TODO account for multiple threads exiting
+      if(current == -1){
         break;
       }
+
+      // TODO error check
+      ptrace(PTRACE_GETREGS, current, NULL, &regs);
+        /* We don't know how to recover from this if ptrace fails. So we break */
 
       /* for each instruction call, check which lib did it come from
       * by walking through the shared_obj table
@@ -327,6 +334,7 @@ int main(int argc, char** argv)  {
       for (auto obj : shared_objs) {
         /* if a file is found, check line table for that instruction */
         if (obj.addr_start <= regs.rip && regs.rip <= obj.addr_end) {
+          printf("PID: %d | rip: %llx\n", current, regs.rip);
           bool found = print_line_info(obj, regs.rip);
           if (found) {
             // Stop execution when line number is found
@@ -336,7 +344,7 @@ int main(int argc, char** argv)  {
         }
       }
 
-      ptrace(PTRACE_SINGLESTEP, child, NULL, NULL);
+      ptrace(PTRACE_SINGLESTEP, current, NULL, NULL);
     }
   }
 
