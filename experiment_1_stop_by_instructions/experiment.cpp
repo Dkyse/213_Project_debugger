@@ -265,8 +265,8 @@ int main(int argc, char** argv)  {
 
     while (wait(NULL) != -1)  {
       if(ptrace(PTRACE_GETREGS, child, NULL, &regs)) {
-        perror("ptrace GETREGS failed");
-        exit(EXIT_FAILURE);
+        /* We don't know how to recover from this if ptrace fails. So we break */
+        break;
       }
 
       /* for each instruction call, check which lib did it come from
@@ -288,5 +288,6 @@ int main(int argc, char** argv)  {
     }
   }
 
+  printf("Program terminated.\n\n");
   return 0;
 }
