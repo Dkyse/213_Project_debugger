@@ -68,6 +68,7 @@ dump_all_line_tables(const std::vector<compilation_unit> &cus) {
 /*************************
 * END TESTING FUNCTIONS *
 *************************/
+
 /**
 * [get_line_entry_from_ip description]
 * @param  pc [description]
@@ -76,6 +77,7 @@ dump_all_line_tables(const std::vector<compilation_unit> &cus) {
 * https://blog.tartanllama.xyz/writing-a-linux-debugger-source-signal/
 */
 dwarf::line_table::iterator get_line_entry_from_ip(const std::vector<compilation_unit> &cus, intptr_t ip) {
+  /* walk through the each compilation unit's line table to find the line */
   for (auto &cu : cus) {
     if (die_pc_range(cu.root()).contains(ip)) {
       auto &lt = cu.get_line_table();
@@ -105,6 +107,7 @@ dwarf::line_table::iterator get_line_entry_from_ip(const std::vector<compilation
 * https://blog.tartanllama.xyz/writing-a-linux-debugger-source-signal/
 */
 dwarf::line_table::iterator get_line_entry_from_function(const std::vector<compilation_unit> compilation_units, const std::string& name) {
+  /* walk through the each compilation unit's line table to find the line */
   for (const auto& cu : compilation_units) {
     for (const auto& die : cu.root()) {
       if (die.has(dwarf::DW_AT::name) && at_name(die) == name) {
@@ -127,28 +130,40 @@ dwarf::line_table::iterator get_line_entry_from_function(const std::vector<compi
 }
 
 /**
-* [print_line_number description]
-* @param cus [description]
-* @param ip  [description]
+* Given an instruction pointer and its object, find line info
+* @param  obj [description]
+* @param  rip [description]
+* @return     if the line is found
 */
+
 bool print_line_info(shared_obj_t &obj, intptr_t rip) {
+  /* calculate offset of the instruction pointer from the beginning of the file */
   // intptr_t file_off = rip-obj.addr_start;
   intptr_t file_off = rip;
+
+  /* return value set to false */
   bool found = false;
+
+  /* a line table */
   dwarf::line_table lt;
+  
+  /* if the object has line table */
   if (obj.has_cus)  {
     printf("File path: %s\n", obj.name.c_str());
+    printf("Instruction address: %p \n", (void*)rip);
     try {
       auto entry = get_line_entry_from_ip(obj.compilation_units, file_off);
-      // printf("rip: %p | off: %lx | file: %s\n", (void*)rip, file_off, entry->file->path.c_str());
+      /* If we find the line, print it */
       printf("Called from line %u\n\n", entry->line);
       found = true;
     } catch(std::out_of_range &e) {
+      /* ILine was not found */
       printf("No line numbers found.\n\n");
     }
   }
   return found;
 }
+
 
 /**
 * [populate_shared_objs description]
@@ -225,6 +240,9 @@ int populate_shared_objs(pid_t child, vector<shared_obj_t> &objects) {
   free(line);
   return 0;
 }
+
+
+
 
 int main(int argc, char** argv)  {
 
@@ -309,12 +327,10 @@ int main(int argc, char** argv)  {
     /* A struct to store debuggee status */
     struct user_regs_struct regs;
 
-    // printf("Loading environment......\n\n\n");
-
-    while (wait(NULL))  {
+    while (wait(NULL) != -1)  {
       if(ptrace(PTRACE_GETREGS, child, NULL, &regs)) {
-        perror("ptrace GETREGS failed");
-        exit(EXIT_FAILURE);
+        /* We don't know how to recover from this if ptrace fails. So we break */
+        break;
       }
 
       /* for each instruction call, check which lib did it come from
@@ -336,5 +352,6 @@ int main(int argc, char** argv)  {
     }
   }
 
+  printf("Program terminated.\n\n");
   return 0;
 }
