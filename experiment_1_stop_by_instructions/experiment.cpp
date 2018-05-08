@@ -41,49 +41,62 @@ typedef struct shared_obj {
   vector<compilation_unit> compilation_units;
 } shared_obj_t;
 
-/***************************
-* BEGIN TESTING FUNCTIONS *
-***************************/
-void
-dump_line_table(const dwarf::line_table &lt)
-{
-  for (auto &line : lt) {
-    if (line.end_sequence)
-    printf("\n");
-    else
-    printf("%-40s%8d%#20" PRIx64 "\n", line.file->path.c_str(),
-    line.line, line.address);
-  }
-}
-
-void
-dump_all_line_tables(const std::vector<compilation_unit> &cus) {
-  for (auto cu : cus) {
-    printf("--- <%x>\n", (unsigned int)cu.get_section_offset());
-    dump_line_table(cu.get_line_table());
-    printf("\n");
-  }
-}
-/*************************
-* END TESTING FUNCTIONS *
-*************************/
+// /***************************
+// * BEGIN TESTING FUNCTIONS *
+// ***************************/
+// void
+// dump_line_table(const dwarf::line_table &lt)
+// {
+//   for (auto &line : lt) {
+//     if (line.end_sequence)
+//     printf("\n");
+//     else
+//     printf("%-40s%8d%#20" PRIx64 "\n", line.file->path.c_str(),
+//     line.line, line.address);
+//   }
+// }
+//
+// void
+// dump_all_line_tables(const std::vector<compilation_unit> &cus) {
+//   for (auto cu : cus) {
+//     printf("--- <%x>\n", (unsigned int)cu.get_section_offset());
+//     dump_line_table(cu.get_line_table());
+//     printf("\n");
+//   }
+// }
+// /*************************
+// * END TESTING FUNCTIONS *
+// *************************/
 
 /**
-* [print_line_number description]
-* @param cus [description]
-* @param ip  [description]
+* Given an instruction pointer and its object, find line info
+* @param  obj [description]
+* @param  rip [description]
+* @return     if the line is found
 */
 bool print_line_info(shared_obj_t &obj, unsigned long rip)  {
+
+  /* calculate offset of the instruction pointer from the beginning of the file */
   unsigned long file_off = rip-obj.addr_start;
+
+  /* return value set to false */
   bool found = false;
+
+  /* a line table */
   dwarf::line_table lt;
-  // TODO do we really need to iterate over all cu's? We only the CU of the executable.
+
+  /* if the object has line table */
   if (obj.has_cus)  {
+
+    /* walk through the line table to find the line */
     for (auto cu : obj.compilation_units)  {
+
       lt = cu.get_line_table();
       auto entry = lt.find_address(file_off);
       if (entry != lt.end())  {
-        // printf("rip: %p | off: %lx | file: %s\n", (void*)rip, file_off, entry->file->path.c_str());
+
+        /* If we find the line, print it */
+        printf("Instruction address: %p \n", (void*)rip);
         printf("File path: %s\n", entry->file->path.c_str());
         printf("Called from line %u\n\n", entry->line);
         found = true;
@@ -91,12 +104,15 @@ bool print_line_info(shared_obj_t &obj, unsigned long rip)  {
       }
     }
   }  else  {
-    // printf("rip: %p | off: %lx | file: %s\n", (void*)rip, file_off, obj.name.c_str());
+
+    /* If we don't find the line, only print file name */
+    printf("Instruction address: %p      Loading environment......\n", (void*)rip);
     printf("File path: %s\n", obj.name.c_str());
     printf("No line numbers found.\n\n");
   }
   return found;
 }
+
 
 /**
 * [populate_shared_objs description]
@@ -174,6 +190,9 @@ int populate_shared_objs(pid_t child, vector<shared_obj_t> &objects) {
   return 0;
 }
 
+
+
+
 int main(int argc, char** argv)  {
 
   /* check and store arguments */
@@ -244,9 +263,7 @@ int main(int argc, char** argv)  {
     /* A struct to store debuggee status */
     struct user_regs_struct regs;
 
-    // printf("Loading environment......\n\n\n");
-
-    while (wait(NULL))  {
+    while (wait(NULL) != -1)  {
       if(ptrace(PTRACE_GETREGS, child, NULL, &regs)) {
         perror("ptrace GETREGS failed");
         exit(EXIT_FAILURE);
@@ -266,7 +283,7 @@ int main(int argc, char** argv)  {
           break;
         }
       }
-      
+
       ptrace(PTRACE_SINGLESTEP, child, NULL, NULL);
     }
   }
