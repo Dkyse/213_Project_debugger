@@ -37,6 +37,8 @@ typedef struct shared_obj {
   unsigned long addr_start; // Start address of object
   unsigned long addr_end;  // End address of object
   string name; // Object name
+  bool has_cus;
+  vector<compilation_unit> compilation_units;
 } shared_obj_t;
 
 /***************************
@@ -71,31 +73,37 @@ dump_all_line_tables(const std::vector<compilation_unit> &cus) {
 * @param cus [description]
 * @param ip  [description]
 */
-bool print_line_info(const vector<compilation_unit> cus, shared_obj_t &obj, unsigned long rip)  {
+bool print_line_info(shared_obj_t &obj, unsigned long rip)  {
   unsigned long file_off = rip-obj.addr_start;
   bool found = false;
   dwarf::line_table lt;
   // TODO do we really need to iterate over all cu's? We only the CU of the executable.
-  for (auto cu : cus)  {
-    lt = cu.get_line_table();
-    auto entry = lt.find_address(file_off);
-    if (entry != lt.end())  {
-      printf("rip: %p | off: %lx | file: %s\n", (void*)rip, file_off, entry->file->path.c_str());
-      printf("File path: %s\n", entry->file->path.c_str());
-      printf("Called from line %u\n\n", entry->line);
-      found = true;
-      break;
+  if (obj.has_cus)  {
+    for (auto cu : obj.compilation_units)  {
+      lt = cu.get_line_table();
+      auto entry = lt.find_address(file_off);
+      if (entry != lt.end())  {
+        printf("rip: %p | off: %lx | file: %s\n", (void*)rip, file_off, entry->file->path.c_str());
+        printf("File path: %s\n", entry->file->path.c_str());
+        printf("Called from line %u\n\n", entry->line);
+        found = true;
+        break;
+      }
     }
+  }  else  {
+    printf("rip: %p | off: %lx | file: %s\n", (void*)rip, file_off, obj.name.c_str());
+    printf("File path: %s\n", obj.name.c_str());
+    printf("No line numbers found.\n\n");
   }
   return found;
 }
 
 /**
-* [populate_maps description]
+* [populate_shared_objs description]
 * Source:
 * https://stackoverflow.com/questions/36523584/how-to-see-memory-layout-of-my-program-in-c-during-run-time/36524010
 */
-int populate_maps(pid_t child, vector<shared_obj_t> &objects) {
+int populate_shared_objs(pid_t child, vector<shared_obj_t> &objects) {
   char* line = NULL;
   size_t size = 0;
   char maps_path[128];
@@ -128,17 +136,36 @@ int populate_maps(pid_t child, vector<shared_obj_t> &objects) {
       return -1;
     }
 
+    string name;
     // Check for valid name
     if (name_end > name_start)  {
-      string name (line + name_start, name_end - name_start);
-      obj.name = name;
+      name = string (line + name_start, name_end - name_start);
+
+      int fd = open(name.c_str(), O_RDONLY);
+
+      /* Check if entry is a readable file */
+      if( fd != -1 ) {
+        // file exists
+        obj.name = name;
+
+        obj.addr_start = addr_start;
+        obj.addr_end = addr_end;
+
+        // Get compilation units for this file
+        try {
+          elf::elf elf(elf::create_mmap_loader(fd));
+          dwarf::dwarf dwarf(dwarf::elf::create_loader(elf));
+          obj.compilation_units = dwarf.compilation_units();
+          obj.has_cus = true;
+        } catch(dwarf::format_error& e) {
+          obj.has_cus = false;
+        }
+
+        // Add object to vector
+        objects.push_back(obj);
+
+      }
     }
-
-    obj.addr_start = addr_start;
-    obj.addr_end = addr_end;
-
-    // Add object to vector
-    objects.push_back(obj);
   } /* end of while */
 
   // Wrap up
@@ -171,16 +198,16 @@ int main(int argc, char** argv)  {
   pid_t child;
 
   /* Using libelfin to trace line numbers. */
-  int fd = open(inputs[0], O_RDONLY);
-  if (fd < 0) {
-    fprintf(stderr, "%s: %s\n", inputs[0], strerror(errno));
-    exit(EXIT_FAILURE);
-  }
-
-  elf::elf elf(elf::create_mmap_loader(fd));
-  dwarf::dwarf dwarf(dwarf::elf::create_loader(elf));
-
-  const std::vector<compilation_unit> compilation_units = dwarf.compilation_units();
+  // int fd = open(inputs[0], O_RDONLY);
+  // if (fd < 0) {
+  //   fprintf(stderr, "%s: %s\n", inputs[0], strerror(errno));
+  //   exit(EXIT_FAILURE);
+  // }
+  //
+  // elf::elf elf(elf::create_mmap_loader(fd));
+  // dwarf::dwarf dwarf(dwarf::elf::create_loader(elf));
+  //
+  // const vector<compilation_unit> compilation_units = dwarf.compilation_units();
   /* end of libelfin preparations */
 
   child = fork();
@@ -205,7 +232,7 @@ int main(int argc, char** argv)  {
     ptrace(PTRACE_SINGLESTEP, child, NULL, NULL);
 
     // Parse child's memory maps
-    if (populate_maps(child, shared_objs)) {
+    if (populate_shared_objs(child, shared_objs)) {
       perror("Failed to parse child's map file.");
       exit(EXIT_FAILURE);
     }
@@ -217,10 +244,10 @@ int main(int argc, char** argv)  {
     getchar();
     printf("\n\n");
 
-    printf("LINE TABLES\n");
-    dump_all_line_tables(compilation_units);
-    getchar();
-    printf("\n\n");
+    //printf("LINE TABLES\n");
+    //  dump_all_line_tables(compilation_units);
+    //getchar();
+    //printf("\n\n");
 
 
     /* A struct to store debuggee status */
@@ -239,17 +266,17 @@ int main(int argc, char** argv)  {
       // printf("inst: %p\n", (void*)regs.rip);
 
       /* for each instruction call, check which lib did it come from */
-      if (regs.rip < 0x700000000000) {
-        for (auto obj : shared_objs) {
-          if (obj.addr_start <= regs.rip && regs.rip <= obj.addr_end) {
-            bool found = print_line_info(compilation_units, obj, regs.rip);
-            if (found) {
-              getchar();
-            }
-            break;
+      // if (regs.rip < 0x700000000000) {
+      for (auto obj : shared_objs) {
+        if (obj.addr_start <= regs.rip && regs.rip <= obj.addr_end) {
+          bool found = print_line_info(obj, regs.rip);
+          if (found) {
+            getchar();
           }
+          break;
         }
       }
+      // }
 
       ptrace(PTRACE_SINGLESTEP, child, NULL, NULL);
     }
