@@ -35,8 +35,8 @@ using std::vector;
 using std::string;
 
 typedef struct shared_obj {
-  unsigned long addr_start; // Start address of object
-  unsigned long addr_end;  // End address of object
+  intptr_t addr_start; // Start address of object
+  intptr_t addr_end;  // End address of object
   string name; // Object name
   bool has_cus;
   vector<compilation_unit> compilation_units;
@@ -131,8 +131,9 @@ dwarf::line_table::iterator get_line_entry_from_function(const std::vector<compi
 * @param cus [description]
 * @param ip  [description]
 */
-bool print_line_info(shared_obj_t &obj, unsigned long rip) {
-  unsigned long file_off = rip-obj.addr_start;
+bool print_line_info(shared_obj_t &obj, intptr_t rip) {
+  // intptr_t file_off = rip-obj.addr_start;
+  intptr_t file_off = rip;
   bool found = false;
   dwarf::line_table lt;
   if (obj.has_cus)  {
@@ -266,6 +267,7 @@ int main(int argc, char** argv)  {
     /* we are in the parent program. Run the debugger */
 
     /* Wait for child to execute new process */
+    // TODO ask Derek how to wait for clone/fork/exec
     int status;
     pid_t ret = waitpid(child, &status, 0);
 
@@ -279,14 +281,30 @@ int main(int argc, char** argv)  {
       exit(EXIT_FAILURE);
     }
 
+    // TODO remove
     printf("SHARED OBJECT TABLE:\n");
     for (auto obj : shared_objs) {
       printf("%lx-%lx\t%s\n", obj.addr_start, obj.addr_end, obj.name.c_str());
     }
-
-    /* wait for user input to advance */
     getchar();
     printf("\n\n");
+
+    /* Set breakpoint for child's main function. */
+    try {
+      // We assume the main executable is the first entry of the maps table
+      auto entry = get_line_entry_from_function(shared_objs[0].compilation_units, "main");
+      breakpoint bp {child, (intptr_t)entry->address};
+      bp.enable();
+      // Continue until we reach the breakpoint
+      ptrace(PTRACE_CONT, child, NULL, NULL);
+      waitpid(child, &status, 0);
+
+      // Breakpoint reached, advance to next instruction
+      bp.disable();
+      ptrace(PTRACE_SINGLESTEP, child, NULL, NULL);
+    } catch(std::out_of_range &e) {
+      fprintf(stderr, "'%s' main function not found", inputs[0]);
+    }
 
     /* A struct to store debuggee status */
     struct user_regs_struct regs;
@@ -305,7 +323,7 @@ int main(int argc, char** argv)  {
       for (auto obj : shared_objs) {
         /* if a file is found, check line table for that instruction */
         if (obj.addr_start <= regs.rip && regs.rip <= obj.addr_end) {
-          // printf("rip: %p | file: %s\n", (void*)regs.rip, obj.name.c_str());
+          printf("rip: %p | file: %s\n", (void*)regs.rip, obj.name.c_str());
           bool found = print_line_info(obj, regs.rip);
           if (found) {
             getchar();
