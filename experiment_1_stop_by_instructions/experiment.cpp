@@ -83,7 +83,7 @@ bool print_line_info(shared_obj_t &obj, unsigned long rip)  {
       lt = cu.get_line_table();
       auto entry = lt.find_address(file_off);
       if (entry != lt.end())  {
-        printf("rip: %p | off: %lx | file: %s\n", (void*)rip, file_off, entry->file->path.c_str());
+        // printf("rip: %p | off: %lx | file: %s\n", (void*)rip, file_off, entry->file->path.c_str());
         printf("File path: %s\n", entry->file->path.c_str());
         printf("Called from line %u\n\n", entry->line);
         found = true;
@@ -91,7 +91,7 @@ bool print_line_info(shared_obj_t &obj, unsigned long rip)  {
       }
     }
   }  else  {
-    printf("rip: %p | off: %lx | file: %s\n", (void*)rip, file_off, obj.name.c_str());
+    // printf("rip: %p | off: %lx | file: %s\n", (void*)rip, file_off, obj.name.c_str());
     printf("File path: %s\n", obj.name.c_str());
     printf("No line numbers found.\n\n");
   }
@@ -185,7 +185,6 @@ int main(int argc, char** argv)  {
 
   char* user_program = argv[1];
 
-
   // Process command line inputs to pass them to execv
   char* inputs[argc];
   inputs[0] = argv[1];
@@ -194,23 +193,14 @@ int main(int argc, char** argv)  {
   }
   inputs[argc-1] = NULL;
 
+  /* a vector to store information and line-table for all files involved */
   vector<shared_obj_t> shared_objs;
+
+  /* debuggee */
   pid_t child;
 
-  /* Using libelfin to trace line numbers. */
-  // int fd = open(inputs[0], O_RDONLY);
-  // if (fd < 0) {
-  //   fprintf(stderr, "%s: %s\n", inputs[0], strerror(errno));
-  //   exit(EXIT_FAILURE);
-  // }
-  //
-  // elf::elf elf(elf::create_mmap_loader(fd));
-  // dwarf::dwarf dwarf(dwarf::elf::create_loader(elf));
-  //
-  // const vector<compilation_unit> compilation_units = dwarf.compilation_units();
-  /* end of libelfin preparations */
-
   child = fork();
+
   if (child == -1)  {
     perror("Failed to fork process");
     exit(EXIT_FAILURE);
@@ -218,56 +208,56 @@ int main(int argc, char** argv)  {
 
     /* we are in the child program. Run the debuggee */
     ptrace(PTRACE_TRACEME, 0, NULL, NULL);
-    //added command line arguments
     execv(inputs[0], inputs);
 
   } else {
+
     /* we are in the parent program. Run the debugger */
 
-    // Wait for child to execute new process
+    /* Wait for child to execute new process */
+
     // TODO there's probably a better way
+
     int status;
+
     pid_t ret = waitpid(child, &status, 0);
-    // Let child advance to next instruction
+
+    /* Let child advance to next instruction */
     ptrace(PTRACE_SINGLESTEP, child, NULL, NULL);
 
-    // Parse child's memory maps
+    /* Parse child's memory maps */
+    /* Store info into shared_objs vector */
     if (populate_shared_objs(child, shared_objs)) {
       perror("Failed to parse child's map file.");
       exit(EXIT_FAILURE);
     }
 
-    printf("SHARED OBJECT TABLE\n");
+    printf("SHARED OBJECT TABLE:\n");
     for (auto obj : shared_objs) {
       printf("%lx-%lx\t%s\n", obj.addr_start, obj.addr_end, obj.name.c_str());
     }
+
+    /* wait for user input to advance */
     getchar();
     printf("\n\n");
-
-    //printf("LINE TABLES\n");
-    //  dump_all_line_tables(compilation_units);
-    //getchar();
-    //printf("\n\n");
-
 
     /* A struct to store debuggee status */
     struct user_regs_struct regs;
 
-
-    printf("Loading environment......\n\n\n");
+    // printf("Loading environment......\n\n\n");
 
     while (wait(NULL))  {
-
       if(ptrace(PTRACE_GETREGS, child, NULL, &regs)) {
         perror("ptrace GETREGS failed");
         exit(EXIT_FAILURE);
       }
 
-      // printf("inst: %p\n", (void*)regs.rip);
-
-      /* for each instruction call, check which lib did it come from */
-      // if (regs.rip < 0x700000000000) {
+      /* for each instruction call, check which lib did it come from
+      * by walking through the shared_obj table
+      */
       for (auto obj : shared_objs) {
+
+        /* if a file is found, check line table for that instruction */
         if (obj.addr_start <= regs.rip && regs.rip <= obj.addr_end) {
           bool found = print_line_info(obj, regs.rip);
           if (found) {
@@ -276,8 +266,7 @@ int main(int argc, char** argv)  {
           break;
         }
       }
-      // }
-
+      
       ptrace(PTRACE_SINGLESTEP, child, NULL, NULL);
     }
   }
