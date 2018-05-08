@@ -25,6 +25,7 @@
 
 #include "elf++.hh"
 #include "dwarf++.hh"
+#include "breakpoint.hh"
 
 // TODO remove
 #include <inttypes.h>
@@ -67,33 +68,83 @@ dump_all_line_tables(const std::vector<compilation_unit> &cus) {
 /*************************
 * END TESTING FUNCTIONS *
 *************************/
+/**
+* [get_line_entry_from_ip description]
+* @param  pc [description]
+* @return    [description]
+* Source:
+* https://blog.tartanllama.xyz/writing-a-linux-debugger-source-signal/
+*/
+dwarf::line_table::iterator get_line_entry_from_ip(const std::vector<compilation_unit> &cus, intptr_t ip) {
+  for (auto &cu : cus) {
+    if (die_pc_range(cu.root()).contains(ip)) {
+      auto &lt = cu.get_line_table();
+      auto it = lt.find_address(ip);
+      if (it == lt.end()) {
+        throw std::out_of_range{"Cannot find line entry"};
+      }
+      else {
+        return it;
+      }
+    }
+  }
+
+  throw std::out_of_range{"Cannot find line entry"};
+}
+
+// void set_breakpoint_at_address(pid_t pid, std::intptr_t addr) {
+//   breakpoint bp {m_pid, addr};
+//   bp.enable();
+// }
+
+/**
+* [get_line_entry_from_ip description]
+* @param  pc [description]
+* @return    [description]
+* Source:
+* https://blog.tartanllama.xyz/writing-a-linux-debugger-source-signal/
+*/
+dwarf::line_table::iterator get_line_entry_from_function(const std::vector<compilation_unit> compilation_units, const std::string& name) {
+  for (const auto& cu : compilation_units) {
+    for (const auto& die : cu.root()) {
+      if (die.has(dwarf::DW_AT::name) && at_name(die) == name) {
+        // Find lowest address for this function DIE
+        auto low_ip = at_low_pc(die);
+        // auto entry = get_line_entry_from_ip(low_ip);
+        auto &lt = cu.get_line_table();
+        auto entry = lt.find_address(low_ip);
+        if (entry == lt.end()) {
+          throw std::out_of_range{"Cannot find line entry"};
+        }
+        else {
+          // skip function prologue to point to actual code
+          return ++entry;
+        }
+      }
+    }
+  }
+  throw std::out_of_range{"Cannot find line entry"};
+}
 
 /**
 * [print_line_number description]
 * @param cus [description]
 * @param ip  [description]
 */
-bool print_line_info(shared_obj_t &obj, unsigned long rip)  {
+bool print_line_info(shared_obj_t &obj, unsigned long rip) {
   unsigned long file_off = rip-obj.addr_start;
   bool found = false;
   dwarf::line_table lt;
-  // TODO do we really need to iterate over all cu's? We only the CU of the executable.
   if (obj.has_cus)  {
-    for (auto cu : obj.compilation_units)  {
-      lt = cu.get_line_table();
-      auto entry = lt.find_address(file_off);
-      if (entry != lt.end())  {
-        // printf("rip: %p | off: %lx | file: %s\n", (void*)rip, file_off, entry->file->path.c_str());
-        printf("File path: %s\n", entry->file->path.c_str());
-        printf("Called from line %u\n\n", entry->line);
-        found = true;
-        break;
-      }
-    }
-  }  else  {
-    // printf("rip: %p | off: %lx | file: %s\n", (void*)rip, file_off, obj.name.c_str());
     printf("File path: %s\n", obj.name.c_str());
-    printf("No line numbers found.\n\n");
+    try {
+      auto entry = get_line_entry_from_ip(obj.compilation_units, file_off);
+      // printf("rip: %p | off: %lx | file: %s\n", (void*)rip, file_off, entry->file->path.c_str());
+      printf("Called from line %u\n\n", entry->line);
+      found = true;
+    } catch(std::out_of_range &e) {
+      printf("No line numbers found.\n\n");
+    }
   }
   return found;
 }
@@ -215,11 +266,7 @@ int main(int argc, char** argv)  {
     /* we are in the parent program. Run the debugger */
 
     /* Wait for child to execute new process */
-
-    // TODO there's probably a better way
-
     int status;
-
     pid_t ret = waitpid(child, &status, 0);
 
     /* Let child advance to next instruction */
@@ -256,9 +303,9 @@ int main(int argc, char** argv)  {
       * by walking through the shared_obj table
       */
       for (auto obj : shared_objs) {
-
         /* if a file is found, check line table for that instruction */
         if (obj.addr_start <= regs.rip && regs.rip <= obj.addr_end) {
+          // printf("rip: %p | file: %s\n", (void*)regs.rip, obj.name.c_str());
           bool found = print_line_info(obj, regs.rip);
           if (found) {
             getchar();
@@ -266,7 +313,7 @@ int main(int argc, char** argv)  {
           break;
         }
       }
-      
+
       ptrace(PTRACE_SINGLESTEP, child, NULL, NULL);
     }
   }
