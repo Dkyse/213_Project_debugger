@@ -13,7 +13,6 @@
 #include <link.h>
 #include <sys/syscall.h>
 #include <sys/wait.h>
-
 #include <pthread.h>
 
 #define SYS_CLONE 56
@@ -100,8 +99,7 @@ int main(int argc, char** argv)  {
    if(child == 0) {
 
      /* we are in the child program. Run the debuggee */
-     ptrace(PTRACE_TRACEME, 0, NULL, NULL);
-
+     ptrace(PTRACE_TRACEME, 0, NULL, PTRACE_O_TRACECLONE);
      //added command line arguments
      execv(inputs[0], inputs);
 
@@ -115,29 +113,38 @@ int main(int argc, char** argv)  {
     int syscall = 0;
     int status;
     pid_t current;
-    ptrace(PTRACE_SETOPTIONS,child,NULL,PTRACE_O_TRACEFORK);
-    while ((current = waitpid(-1, &status, 0)))  {
-
-      if(ptrace(PTRACE_GETREGS, current, NULL, &regs)) {
-        perror("ptrace GETREGS failed");
+    
+    //ptrace(PTRACE_SETOPTIONS,child,NULL,PTRACE_O_TRACECLONE);
+    while (1)  {
+      current = waitpid(-1, &status, P_ALL);
+      if(current == -1){
         exit(2);
       }
-      //ptrace(PTRACE_SETOPTIONS, child, NULL, PTRACE_O_TRACEFORK | PTRACE_O_TRACEVFORK | PTRACE_O_TRACECLONE);
+      ptrace(PTRACE_SETOPTIONS, child, NULL, PTRACE_O_TRACEFORK | PTRACE_O_TRACEVFORK | PTRACE_O_TRACECLONE);
+      
+      ptrace(PTRACE_GETREGS, current, NULL, &regs);
+      
+     
       /* parse user instructions */
       if (strcmp(command, "by_sys_call") == 0)  {
 
         printf("The child %d  made a system call %s\n", current, callname(regs.orig_rax));
         
-        if(regs.orig_rax == SYS_CLONE){  
-          printf("%d\n", status);
+        /*if(regs.orig_rax == SYS_CLONE){  
+          printf("status: %d\n", status);
           if(syscall == 0){
             pid_t threadchild;
             
             //ptrace(PTRACE_SINGLESTEP, current, NULL, NULL);
             printf("rdi= %llu rsi=%llu rdx=%llu r10=%llu\n", regs.rdi, regs.rsi, regs.rdx, regs.r10);
-            ptrace(PTRACE_GETEVENTMSG, current, NULL, &threadchild);
+            
+            ptrace(PTRACE_GETEVENTMSG, regs.r10, NULL, &threadchild);
+            //ptrace(PTRACE_SINGLESTEP, current, NULL, NULL);
             printf("attaching to pthread %d\n", threadchild);
-            ptrace(PTRACE_ATTACH, threadchild, NULL, NULL);
+            if(ptrace(PTRACE_ATTACH, threadchild, NULL, NULL)){
+              perror("ptrace ATTACH failed");
+              //exit(2);
+            }
             //pthread_create(&test, NULL, attachtochild, (void*)regs.r10); 
             
             //printf(" this should be the thread PID %llu\n", regs.orig_rax);
@@ -148,11 +155,12 @@ int main(int argc, char** argv)  {
             printf("returned: %ld", eax);
             syscall = 0;
           }
-          getchar();
+        */
+        //getchar();
           //pid_t target = syscall(SYS_gettid);
           //printf("pid %d\n", target);
           
-        }
+          //}
 
 
       } else if (strcmp(command, "by_instruction") == 0)  {
