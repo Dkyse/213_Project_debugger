@@ -9,6 +9,7 @@
 
 #include <errno.h>
 #include <fcntl.h>
+#include <inttypes.h>
 #include <link.h>
 #include <stdio.h>
 #include <sys/ptrace.h>
@@ -27,19 +28,16 @@
 #include "dwarf++.hh"
 #include "breakpoint.hh"
 
-// TODO remove
-#include <inttypes.h>
-
 using dwarf::compilation_unit;
 using std::vector;
 using std::string;
 
 typedef struct shared_obj {
-  intptr_t addr_start; // Start address of object
-  intptr_t addr_end;  // End address of object
-  string name; // Object name
-  bool has_cus;
-  vector<compilation_unit> compilation_units;
+  intptr_t addr_start;  // Start address of object
+  intptr_t addr_end;    // End address of object
+  string name;          // Object name
+  bool has_cus;         // Whether object has associated compilation units
+  vector<compilation_unit> compilation_units; // Object's compilation units
 } shared_obj_t;
 
 /***************************
@@ -94,11 +92,6 @@ dwarf::line_table::iterator get_line_entry_from_ip(const std::vector<compilation
   throw std::out_of_range{"Cannot find line entry"};
 }
 
-// void set_breakpoint_at_address(pid_t pid, std::intptr_t addr) {
-//   breakpoint bp {m_pid, addr};
-//   bp.enable();
-// }
-
 /**
 * [get_line_entry_from_ip description]
 * @param  pc [description]
@@ -113,7 +106,6 @@ dwarf::line_table::iterator get_line_entry_from_function(const std::vector<compi
       if (die.has(dwarf::DW_AT::name) && at_name(die) == name) {
         // Find lowest address for this function DIE
         auto low_ip = at_low_pc(die);
-        // auto entry = get_line_entry_from_ip(low_ip);
         auto &lt = cu.get_line_table();
         auto entry = lt.find_address(low_ip);
         if (entry == lt.end()) {
@@ -131,11 +123,10 @@ dwarf::line_table::iterator get_line_entry_from_function(const std::vector<compi
 
 /**
 * Given an instruction pointer and its object, find line info
-* @param  obj [description]
-* @param  rip [description]
-* @return     if the line is found
+* @param  obj a shared object entry
+* @param  rip instruction pointer
+* @return     true if the line is found, false otherwise
 */
-
 bool print_line_info(shared_obj_t &obj, intptr_t rip) {
   /* calculate offset of the instruction pointer from the beginning of the file */
   // intptr_t file_off = rip-obj.addr_start;
@@ -146,7 +137,7 @@ bool print_line_info(shared_obj_t &obj, intptr_t rip) {
 
   /* a line table */
   dwarf::line_table lt;
-  
+
   /* if the object has line table */
   if (obj.has_cus)  {
     printf("File path: %s\n", obj.name.c_str());
@@ -240,9 +231,6 @@ int populate_shared_objs(pid_t child, vector<shared_obj_t> &objects) {
   free(line);
   return 0;
 }
-
-
-
 
 int main(int argc, char** argv)  {
 
@@ -339,9 +327,9 @@ int main(int argc, char** argv)  {
       for (auto obj : shared_objs) {
         /* if a file is found, check line table for that instruction */
         if (obj.addr_start <= regs.rip && regs.rip <= obj.addr_end) {
-          printf("rip: %p | file: %s\n", (void*)regs.rip, obj.name.c_str());
           bool found = print_line_info(obj, regs.rip);
           if (found) {
+            // Stop execution when line number is found
             getchar();
           }
           break;
@@ -352,6 +340,6 @@ int main(int argc, char** argv)  {
     }
   }
 
-  printf("Program terminated.\n\n");
+  printf("Program '%s' terminated", inputs[0]);
   return 0;
 }
