@@ -25,6 +25,7 @@
 
 #include "elf++.hh"
 #include "dwarf++.hh"
+#include "breakpoint.hh"
 
 // TODO remove
 #include <inttypes.h>
@@ -34,39 +35,99 @@ using std::vector;
 using std::string;
 
 typedef struct shared_obj {
-  unsigned long addr_start; // Start address of object
-  unsigned long addr_end;  // End address of object
+  intptr_t addr_start; // Start address of object
+  intptr_t addr_end;  // End address of object
   string name; // Object name
   bool has_cus;
   vector<compilation_unit> compilation_units;
 } shared_obj_t;
 
-// /***************************
-// * BEGIN TESTING FUNCTIONS *
-// ***************************/
-// void
-// dump_line_table(const dwarf::line_table &lt)
-// {
-//   for (auto &line : lt) {
-//     if (line.end_sequence)
-//     printf("\n");
-//     else
-//     printf("%-40s%8d%#20" PRIx64 "\n", line.file->path.c_str(),
-//     line.line, line.address);
-//   }
+/***************************
+* BEGIN TESTING FUNCTIONS *
+***************************/
+void
+dump_line_table(const dwarf::line_table &lt)
+{
+  for (auto &line : lt) {
+    if (line.end_sequence)
+    printf("\n");
+    else
+    printf("%-40s%8d%#20" PRIx64 "\n", line.file->path.c_str(),
+    line.line, line.address);
+  }
+}
+
+void
+dump_all_line_tables(const std::vector<compilation_unit> &cus) {
+  for (auto cu : cus) {
+    printf("--- <%x>\n", (unsigned int)cu.get_section_offset());
+    dump_line_table(cu.get_line_table());
+    printf("\n");
+  }
+}
+/*************************
+* END TESTING FUNCTIONS *
+*************************/
+
+/**
+* [get_line_entry_from_ip description]
+* @param  pc [description]
+* @return    [description]
+* Source:
+* https://blog.tartanllama.xyz/writing-a-linux-debugger-source-signal/
+*/
+dwarf::line_table::iterator get_line_entry_from_ip(const std::vector<compilation_unit> &cus, intptr_t ip) {
+  /* walk through the each compilation unit's line table to find the line */
+  for (auto &cu : cus) {
+    if (die_pc_range(cu.root()).contains(ip)) {
+      auto &lt = cu.get_line_table();
+      auto it = lt.find_address(ip);
+      if (it == lt.end()) {
+        throw std::out_of_range{"Cannot find line entry"};
+      }
+      else {
+        return it;
+      }
+    }
+  }
+
+  throw std::out_of_range{"Cannot find line entry"};
+}
+
+// void set_breakpoint_at_address(pid_t pid, std::intptr_t addr) {
+//   breakpoint bp {m_pid, addr};
+//   bp.enable();
 // }
-//
-// void
-// dump_all_line_tables(const std::vector<compilation_unit> &cus) {
-//   for (auto cu : cus) {
-//     printf("--- <%x>\n", (unsigned int)cu.get_section_offset());
-//     dump_line_table(cu.get_line_table());
-//     printf("\n");
-//   }
-// }
-// /*************************
-// * END TESTING FUNCTIONS *
-// *************************/
+
+/**
+* [get_line_entry_from_ip description]
+* @param  pc [description]
+* @return    [description]
+* Source:
+* https://blog.tartanllama.xyz/writing-a-linux-debugger-source-signal/
+*/
+dwarf::line_table::iterator get_line_entry_from_function(const std::vector<compilation_unit> compilation_units, const std::string& name) {
+  /* walk through the each compilation unit's line table to find the line */
+  for (const auto& cu : compilation_units) {
+    for (const auto& die : cu.root()) {
+      if (die.has(dwarf::DW_AT::name) && at_name(die) == name) {
+        // Find lowest address for this function DIE
+        auto low_ip = at_low_pc(die);
+        // auto entry = get_line_entry_from_ip(low_ip);
+        auto &lt = cu.get_line_table();
+        auto entry = lt.find_address(low_ip);
+        if (entry == lt.end()) {
+          throw std::out_of_range{"Cannot find line entry"};
+        }
+        else {
+          // skip function prologue to point to actual code
+          return ++entry;
+        }
+      }
+    }
+  }
+  throw std::out_of_range{"Cannot find line entry"};
+}
 
 /**
 * Given an instruction pointer and its object, find line info
@@ -74,41 +135,31 @@ typedef struct shared_obj {
 * @param  rip [description]
 * @return     if the line is found
 */
-bool print_line_info(shared_obj_t &obj, unsigned long rip)  {
 
+bool print_line_info(shared_obj_t &obj, intptr_t rip) {
   /* calculate offset of the instruction pointer from the beginning of the file */
-  unsigned long file_off = rip-obj.addr_start;
+  // intptr_t file_off = rip-obj.addr_start;
+  intptr_t file_off = rip;
 
   /* return value set to false */
   bool found = false;
 
   /* a line table */
   dwarf::line_table lt;
-
+  
   /* if the object has line table */
   if (obj.has_cus)  {
-
-    /* walk through the line table to find the line */
-    for (auto cu : obj.compilation_units)  {
-
-      lt = cu.get_line_table();
-      auto entry = lt.find_address(file_off);
-      if (entry != lt.end())  {
-
-        /* If we find the line, print it */
-        printf("Instruction address: %p \n", (void*)rip);
-        printf("File path: %s\n", entry->file->path.c_str());
-        printf("Called from line %u\n\n", entry->line);
-        found = true;
-        break;
-      }
-    }
-  }  else  {
-
-    /* If we don't find the line, only print file name */
-    printf("Instruction address: %p      Loading environment......\n", (void*)rip);
     printf("File path: %s\n", obj.name.c_str());
-    printf("No line numbers found.\n\n");
+    printf("Instruction address: %p \n", (void*)rip);
+    try {
+      auto entry = get_line_entry_from_ip(obj.compilation_units, file_off);
+      /* If we find the line, print it */
+      printf("Called from line %u\n\n", entry->line);
+      found = true;
+    } catch(std::out_of_range &e) {
+      /* ILine was not found */
+      printf("No line numbers found.\n\n");
+    }
   }
   return found;
 }
@@ -234,11 +285,8 @@ int main(int argc, char** argv)  {
     /* we are in the parent program. Run the debugger */
 
     /* Wait for child to execute new process */
-
-    // TODO there's probably a better way
-
+    // TODO ask Derek how to wait for clone/fork/exec
     int status;
-
     pid_t ret = waitpid(child, &status, 0);
 
     /* Let child advance to next instruction */
@@ -251,14 +299,30 @@ int main(int argc, char** argv)  {
       exit(EXIT_FAILURE);
     }
 
+    // TODO remove
     printf("SHARED OBJECT TABLE:\n");
     for (auto obj : shared_objs) {
       printf("%lx-%lx\t%s\n", obj.addr_start, obj.addr_end, obj.name.c_str());
     }
-
-    /* wait for user input to advance */
     getchar();
     printf("\n\n");
+
+    /* Set breakpoint for child's main function. */
+    try {
+      // We assume the main executable is the first entry of the maps table
+      auto entry = get_line_entry_from_function(shared_objs[0].compilation_units, "main");
+      breakpoint bp {child, (intptr_t)entry->address};
+      bp.enable();
+      // Continue until we reach the breakpoint
+      ptrace(PTRACE_CONT, child, NULL, NULL);
+      waitpid(child, &status, 0);
+
+      // Breakpoint reached, advance to next instruction
+      bp.disable();
+      ptrace(PTRACE_SINGLESTEP, child, NULL, NULL);
+    } catch(std::out_of_range &e) {
+      fprintf(stderr, "'%s' main function not found", inputs[0]);
+    }
 
     /* A struct to store debuggee status */
     struct user_regs_struct regs;
@@ -273,9 +337,9 @@ int main(int argc, char** argv)  {
       * by walking through the shared_obj table
       */
       for (auto obj : shared_objs) {
-
         /* if a file is found, check line table for that instruction */
         if (obj.addr_start <= regs.rip && regs.rip <= obj.addr_end) {
+          printf("rip: %p | file: %s\n", (void*)regs.rip, obj.name.c_str());
           bool found = print_line_info(obj, regs.rip);
           if (found) {
             getchar();

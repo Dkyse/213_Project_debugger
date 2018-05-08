@@ -1,4 +1,4 @@
 ROOT = ..
-TARGETS = test
+TARGETS = helloworld
 
 include $(ROOT)/common.mk
