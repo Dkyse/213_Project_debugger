@@ -36,6 +36,7 @@ typedef struct shared_obj {
   intptr_t addr_start;  // Start address of object
   intptr_t addr_end;    // End address of object
   string name;          // Object name
+  elf::et type;         // Object file type
   bool has_cus;         // Whether object has associated compilation units
   vector<compilation_unit> compilation_units; // Object's compilation units
 } shared_obj_t;
@@ -66,6 +67,42 @@ dump_all_line_tables(const std::vector<compilation_unit> &cus) {
 /*************************
 * END TESTING FUNCTIONS *
 *************************/
+
+intptr_t relative_ip_offset(shared_obj_t &obj, intptr_t ip) {
+  switch (obj.type) {
+    case elf::et::exec:
+    // exec files have relative addresses
+    return ip;
+    break;
+
+    case elf::et::dyn:
+    // dynamic files have absolute addresses
+    return ip - obj.addr_start;
+    break;
+
+    default:
+    // We don't consider other types
+    return ip;
+  }
+}
+
+intptr_t absolute_ip_offset(shared_obj_t &obj, intptr_t ip) {
+  switch (obj.type) {
+    case elf::et::exec:
+    // exec files have relative addresses
+    return ip;
+    break;
+
+    case elf::et::dyn:
+    // dynamic files have absolute addresses
+    return ip + obj.addr_start;
+    break;
+
+    default:
+    // We don't consider other types
+    return ip;
+  }
+}
 
 /**
 * [get_line_entry_from_ip description]
@@ -129,8 +166,7 @@ dwarf::line_table::iterator get_line_entry_from_function(const std::vector<compi
 */
 bool print_line_info(shared_obj_t &obj, intptr_t rip) {
   /* calculate offset of the instruction pointer from the beginning of the file */
-  // intptr_t file_off = rip-obj.addr_start;
-  intptr_t file_off = rip;
+  intptr_t file_off = relative_ip_offset(obj, rip);
 
   /* return value set to false */
   bool found = false;
@@ -213,6 +249,7 @@ int populate_shared_objs(pid_t child, vector<shared_obj_t> &objects) {
         try {
           elf::elf elf(elf::create_mmap_loader(fd));
           dwarf::dwarf dwarf(dwarf::elf::create_loader(elf));
+          obj.type = elf.get_hdr().type;
           obj.compilation_units = dwarf.compilation_units();
           obj.has_cus = true;
         } catch(dwarf::format_error& e) {
@@ -221,7 +258,6 @@ int populate_shared_objs(pid_t child, vector<shared_obj_t> &objects) {
 
         // Add object to vector
         objects.push_back(obj);
-
       }
     }
   } /* end of while */
@@ -300,7 +336,7 @@ int main(int argc, char** argv)  {
     // try {
     //   // We assume the main executable is the first entry of the maps table
     //   auto entry = get_line_entry_from_function(shared_objs[0].compilation_units, "main");
-    //   breakpoint bp {child, (intptr_t)(entry->address + shared_objs[0].addr_start)};
+    //   breakpoint bp {child, relative_ip_offset(shared_objs[0], entry->address)};
     //   bp.enable();
     //   // Continue until we reach the breakpoint
     //   ptrace(PTRACE_CONT, child, NULL, NULL);
