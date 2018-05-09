@@ -87,11 +87,11 @@ intptr_t relative_ip_offset(shared_obj_t &obj, intptr_t ip) {
 }
 
 /**
- *
- * @param  obj [description]
- * @param  ip  instruction pointer address relative to object start address
- * @return     [description]
- */
+*
+* @param  obj [description]
+* @param  ip  instruction pointer address relative to object start address
+* @return     [description]
+*/
 // TODO these names are terrible! change them!
 intptr_t absolute_ip_offset(shared_obj_t &obj, intptr_t ip) {
   switch (obj.type) {
@@ -156,10 +156,8 @@ dwarf::line_table::iterator get_line_entry_from_function(const std::vector<compi
           throw std::out_of_range{"Cannot find line entry"};
         }
         else {
-          // TODO remove!
-          // skip function prologue to point to actual code
-          // return ++entry;
-          return entry;
+          // skip function prologue to point to actual user code
+          return ++entry;
         }
       }
     }
@@ -277,10 +275,51 @@ int populate_shared_objs(pid_t child, vector<shared_obj_t> &objects) {
   return 0;
 }
 
+/**
+* [break_at_main description]
+* @param child    [description]
+* @param main_obj [description]
+*/
+void break_at_main(pid_t child, shared_obj_t &main_obj) {
+  // To store waitpid status
+  int status;
+  // To store debuggee status
+  struct user_regs_struct regs;
+
+  try {
+    // Get main function line table entry
+    auto main_entry = get_line_entry_from_function(main_obj.compilation_units, "main");
+    printf("MAIN: %lx\n\n", main_entry->address);
+    dump_all_line_tables(main_obj.compilation_units);
+    getchar();
+    printf("\n\n");
+    // Set breakpoint
+    breakpoint bp {child, absolute_ip_offset(main_obj, main_entry->address)};
+    bp.enable();
+    // Continue until we reach the breakpoint
+    intptr_t prev_ip;
+    do {
+      ptrace(PTRACE_CONT, child, NULL, NULL);
+      // TODO error check
+      waitpid(child, &status, 0);
+      // TODO error check
+      ptrace(PTRACE_GETREGS, child, NULL, &regs);
+      // possible breakpoint location
+      prev_ip = regs.rip - 1;
+    } while(main_entry->address != prev_ip);
+    // Breakpoint reached, reset ip to that location
+    regs.rip = prev_ip;
+    ptrace(PTRACE_SETREGS, child, NULL, &regs);
+    // restore bp instruction
+    bp.disable();
+  } catch(std::out_of_range &e) {
+    fprintf(stderr, "'%s' main function not found", main_obj.name.c_str());
+  }
+}
+
 int main(int argc, char** argv)  {
 
-  /* check and store arguments */
-
+  /* Parse command line arguments */
   if(argc < 2) {
     fprintf(stderr, "Usage: %s <program path> <program command inputs>\n", argv[0]);
     exit(EXIT_FAILURE);
@@ -321,10 +360,9 @@ int main(int argc, char** argv)  {
     // TODO ask Derek how to wait for clone/fork/exec
     int status;
     pid_t ret = waitpid(child, &status, 0);
-    ptrace(PTRACE_SETOPTIONS, child, NULL, PTRACE_O_TRACEFORK | PTRACE_O_TRACEVFORK | PTRACE_O_TRACECLONE);
 
-    /* Let child advance to next instruction */
-    ptrace(PTRACE_SINGLESTEP, child, NULL, NULL);
+    // Enable tracing new threads
+    ptrace(PTRACE_SETOPTIONS, child, NULL, PTRACE_O_TRACEFORK | PTRACE_O_TRACEVFORK | PTRACE_O_TRACECLONE);
 
     /* Parse child's memory maps */
     /* Store info into shared_objs vector */
@@ -341,30 +379,16 @@ int main(int argc, char** argv)  {
     getchar();
     printf("\n\n");
 
-    /* Set breakpoint for child's main function. */
-    try {
-      // We assume the main executable is the first entry of the maps table
-      auto entry = get_line_entry_from_function(shared_objs[0].compilation_units, "main");
-      printf("MAIN: %lx\n\n", entry->address);
-      dump_all_line_tables(shared_objs[0].compilation_units);
-      getchar();
-      printf("\n\n");
-      breakpoint bp {child, absolute_ip_offset(shared_objs[0], entry->address)};
-      bp.enable();
-      // Continue until we reach the breakpoint
-      ptrace(PTRACE_CONT, child, NULL, NULL);
-      waitpid(child, &status, 0);
 
-      // Breakpoint reached, advance to next instruction
-      bp.disable();
-      ptrace(PTRACE_SINGLESTEP, child, NULL, NULL);
-    } catch(std::out_of_range &e) {
-      fprintf(stderr, "'%s' main function not found", inputs[0]);
-    }
+    /* Set breakpoint for child's main function. */
+    // We assume the main executable is the first entry of the maps table
+    break_at_main(child, shared_objs[0]);
 
     /* A struct to store debuggee status */
     struct user_regs_struct regs;
 
+    /* Advance to child's next instruction */
+    ptrace(PTRACE_SINGLESTEP, child, NULL, NULL);
 
     while (1)  {
       pid_t current = waitpid(-1, &status, P_ALL);
