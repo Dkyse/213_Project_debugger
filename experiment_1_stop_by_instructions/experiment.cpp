@@ -86,6 +86,12 @@ intptr_t relative_ip_offset(shared_obj_t &obj, intptr_t ip) {
   }
 }
 
+/**
+ *
+ * @param  obj [description]
+ * @param  ip  instruction pointer address relative to object start address
+ * @return     [description]
+ */
 intptr_t absolute_ip_offset(shared_obj_t &obj, intptr_t ip) {
   switch (obj.type) {
     case elf::et::exec:
@@ -176,15 +182,15 @@ bool print_line_info(shared_obj_t &obj, intptr_t rip) {
 
   /* if the object has line table */
   if (obj.has_cus)  {
-    printf("File path: %s\n", obj.name.c_str());
-    printf("Instruction address: %p \n", (void*)rip);
     try {
       auto entry = get_line_entry_from_ip(obj.compilation_units, file_off);
       /* If we find the line, print it */
+      printf("File path: %s\n", entry->file->path.c_str());
       printf("Called from line %u\n\n", entry->line);
       found = true;
     } catch(std::out_of_range &e) {
       /* ILine was not found */
+      printf("File path: %s\n", obj.name.c_str());
       printf("No line numbers found.\n\n");
     }
   }
@@ -327,7 +333,7 @@ int main(int argc, char** argv)  {
     // TODO remove
     printf("SHARED OBJECT TABLE:\n");
     for (auto obj : shared_objs) {
-      printf("%lx-%lx\t%s\n", obj.addr_start, obj.addr_end, obj.name.c_str());
+      printf("%lx-%lx\t%hu %s\n", obj.addr_start, obj.addr_end, obj.type, obj.name.c_str());
     }
     getchar();
     printf("\n\n");
@@ -336,7 +342,7 @@ int main(int argc, char** argv)  {
     // try {
     //   // We assume the main executable is the first entry of the maps table
     //   auto entry = get_line_entry_from_function(shared_objs[0].compilation_units, "main");
-    //   breakpoint bp {child, relative_ip_offset(shared_objs[0], entry->address)};
+    //   breakpoint bp {child, absolute_ip_offset(shared_objs[0], entry->address)};
     //   bp.enable();
     //   // Continue until we reach the breakpoint
     //   ptrace(PTRACE_CONT, child, NULL, NULL);
@@ -362,7 +368,7 @@ int main(int argc, char** argv)  {
 
       // TODO error check
       ptrace(PTRACE_GETREGS, current, NULL, &regs);
-        /* We don't know how to recover from this if ptrace fails. So we break */
+      /* We don't know how to recover from this if ptrace fails. So we break */
 
       /* for each instruction call, check which lib did it come from
       * by walking through the shared_obj table
@@ -370,7 +376,7 @@ int main(int argc, char** argv)  {
       for (auto obj : shared_objs) {
         /* if a file is found, check line table for that instruction */
         if (obj.addr_start <= regs.rip && regs.rip <= obj.addr_end) {
-          printf("PID: %d | rip: %llx\n", current, regs.rip);
+          printf("Thread ID (PID): %d | Instruction address: %llx\n", current, regs.rip);
           bool found = print_line_info(obj, regs.rip);
           if (found) {
             // Stop execution when line number is found
@@ -384,6 +390,6 @@ int main(int argc, char** argv)  {
     }
   }
 
-  printf("Program '%s' terminated", inputs[0]);
+  printf("Program '%s' terminated.\n\n", inputs[0]);
   return 0;
 }
