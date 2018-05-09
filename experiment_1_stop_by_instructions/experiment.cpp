@@ -67,7 +67,7 @@ dump_all_line_tables(const std::vector<compilation_unit> &cus) {
 /*************************
 * END TESTING FUNCTIONS *
 *************************/
-
+// TODO these names are terrible! change them!
 intptr_t relative_ip_offset(shared_obj_t &obj, intptr_t ip) {
   switch (obj.type) {
     case elf::et::exec:
@@ -92,6 +92,7 @@ intptr_t relative_ip_offset(shared_obj_t &obj, intptr_t ip) {
  * @param  ip  instruction pointer address relative to object start address
  * @return     [description]
  */
+// TODO these names are terrible! change them!
 intptr_t absolute_ip_offset(shared_obj_t &obj, intptr_t ip) {
   switch (obj.type) {
     case elf::et::exec:
@@ -155,8 +156,10 @@ dwarf::line_table::iterator get_line_entry_from_function(const std::vector<compi
           throw std::out_of_range{"Cannot find line entry"};
         }
         else {
+          // TODO remove!
           // skip function prologue to point to actual code
-          return ++entry;
+          // return ++entry;
+          return entry;
         }
       }
     }
@@ -189,7 +192,7 @@ bool print_line_info(shared_obj_t &obj, intptr_t rip) {
       printf("Called from line %u\n\n", entry->line);
       found = true;
     } catch(std::out_of_range &e) {
-      /* ILine was not found */
+      /* Line was not found */
       printf("File path: %s\n", obj.name.c_str());
       printf("No line numbers found.\n\n");
     }
@@ -339,21 +342,25 @@ int main(int argc, char** argv)  {
     printf("\n\n");
 
     /* Set breakpoint for child's main function. */
-    // try {
-    //   // We assume the main executable is the first entry of the maps table
-    //   auto entry = get_line_entry_from_function(shared_objs[0].compilation_units, "main");
-    //   breakpoint bp {child, absolute_ip_offset(shared_objs[0], entry->address)};
-    //   bp.enable();
-    //   // Continue until we reach the breakpoint
-    //   ptrace(PTRACE_CONT, child, NULL, NULL);
-    //   waitpid(child, &status, 0);
-    //
-    //   // Breakpoint reached, advance to next instruction
-    //   bp.disable();
-    //   ptrace(PTRACE_SINGLESTEP, child, NULL, NULL);
-    // } catch(std::out_of_range &e) {
-    //   fprintf(stderr, "'%s' main function not found", inputs[0]);
-    // }
+    try {
+      // We assume the main executable is the first entry of the maps table
+      auto entry = get_line_entry_from_function(shared_objs[0].compilation_units, "main");
+      printf("MAIN: %lx\n\n", entry->address);
+      dump_all_line_tables(shared_objs[0].compilation_units);
+      getchar();
+      printf("\n\n");
+      breakpoint bp {child, absolute_ip_offset(shared_objs[0], entry->address)};
+      bp.enable();
+      // Continue until we reach the breakpoint
+      ptrace(PTRACE_CONT, child, NULL, NULL);
+      waitpid(child, &status, 0);
+
+      // Breakpoint reached, advance to next instruction
+      bp.disable();
+      ptrace(PTRACE_SINGLESTEP, child, NULL, NULL);
+    } catch(std::out_of_range &e) {
+      fprintf(stderr, "'%s' main function not found", inputs[0]);
+    }
 
     /* A struct to store debuggee status */
     struct user_regs_struct regs;
@@ -390,6 +397,6 @@ int main(int argc, char** argv)  {
     }
   }
 
-  printf("Program '%s' terminated.\n\n", inputs[0]);
+  printf("\nProgram '%s' terminated.\n", inputs[0]);
   return 0;
 }
