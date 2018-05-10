@@ -34,40 +34,6 @@ using std::vector;
 using std::string;
 
 /**
-* Given an instruction pointer and its object, find line info
-* @param  obj a shared object entry
-* @param  rip instruction pointer
-* @return     true if the line is found, false otherwise
-*/
-bool print_line_info(shared_obj &obj, intptr_t rip) {
-  /* calculate offset of the instruction pointer from the beginning of the file */
-  intptr_t file_off = obj.relative_ip_offset(rip);
-
-  /* return value set to false */
-  bool found = false;
-
-  /* if the object has line table */
-  if (obj.has_cus())  {
-    try {
-      auto entry = obj.get_line_entry_from_ip(file_off);
-      /* If we find the line, print it */
-      printf("File path: %s\n", entry->file->path.c_str());
-      printf("Called from line %u\n\n", entry->line);
-      found = true;
-    } catch(std::out_of_range &e) {
-      /* Line was not found */
-      printf("File path: %s\n", obj.get_name().c_str());
-      printf("No line numbers found.\n\n");
-    }
-  } else {
-    printf("File path: %s\n", obj.get_name().c_str());
-    printf("No debug information available.\n\n");
-  }
-  return found;
-}
-
-
-/**
 * [populate_shared_objs description]
 * Source:
 * https://stackoverflow.com/questions/36523584/how-to-see-memory-layout-of-my-program-in-c-during-run-time/36524010
@@ -170,6 +136,53 @@ void break_at_main(pid_t child, shared_obj &main_obj) {
   }
 }
 
+bool same_source_file(const dwarf::line_table::entry &x, const dwarf::line_table::entry &y) {
+  return (x.file_index == y.file_index) && (x.line == y.line);
+}
+
+/**
+* Given an instruction pointer and its object, find line info
+* @param  obj a shared object entry
+* @param  rip instruction pointer
+* @return     true if the line is found, false otherwise
+*/
+bool print_line_info(shared_obj &obj, intptr_t rip, dwarf::line_table::entry &prev_entry) {
+  /* calculate offset of the instruction pointer from the beginning of the file */
+  intptr_t file_off = obj.relative_ip_offset(rip);
+
+  /* return value set to false */
+  bool found = false;
+
+  /* if the object has line table */
+  if (obj.has_cus())  {
+    try {
+      auto entry = obj.get_line_entry_from_ip(file_off);
+      /* If we find the line, print it */
+      if (!same_source_file(*entry, prev_entry)) {
+        printf("File path: %s\n", entry->file->path.c_str());
+        printf("Called from line %u\n\n", entry->line);
+        prev_entry = *entry;
+        found = true;
+      } else {
+        //TODO remove
+        printf("\tREPEAT: %u\n", entry->line);
+      }
+    } catch(std::out_of_range &e) {
+      /* Line was not found */
+      printf("File path: %s\n", obj.get_name().c_str());
+      printf("No line numbers found.\n\n");
+      // Reset prev_entry
+      prev_entry.reset(false);
+    }
+  } else {
+    printf("File path: %s\n", obj.get_name().c_str());
+    printf("No debug information available.\n\n");
+    // Reset prev_entry
+    prev_entry.reset(false);
+  }
+  return found;
+}
+
 int main(int argc, char** argv)  {
 
   /* Parse command line arguments */
@@ -237,6 +250,8 @@ int main(int argc, char** argv)  {
     // We assume the main executable is the first entry of the maps table
     break_at_main(child, shared_objs[0]);
 
+    dwarf::line_table::entry prev_entry;
+
     /* A struct to store debuggee status */
     struct user_regs_struct regs;
 
@@ -261,7 +276,7 @@ int main(int argc, char** argv)  {
         /* if a file is found, check line table for that instruction */
         if (obj.contains(regs.rip)) {
           printf("Thread ID (PID): %d | Instruction address: %llx\n", current, regs.rip);
-          bool found = print_line_info(obj, regs.rip);
+          bool found = print_line_info(obj, regs.rip, prev_entry);
           if (found) {
             // Stop execution when line number is found
             getchar();
