@@ -12,7 +12,7 @@ Source: Example program is Derek's assignment 4 letter count program.
 Letter count uses threads to count the number of letters in an input file.  
 Run make file in example folder  
 Run make file in experment_1_stop_by_instructions folder  
-run experiment with the example program `experiment ../example/lettercount 4 ../example/inputs/input1.txt1`
+run experiment with the example program `experiment ../example/lettercount 4 ../example/inputs/input1.txt1`  
 press enter to advance  
 
 ## Expected Sample Output:
