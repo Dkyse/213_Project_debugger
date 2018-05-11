@@ -1,37 +1,13 @@
-## Welcome to GitHub Pages
+213 Project Debugger README
 
-You can use the [editor on GitHub](https://github.com/Dkyse/213_Project_debugger/edit/master/README.md) to maintain and preview the content for your website in Markdown files.
+Derek Wang, Shida Jing, David Asanza
 
-Whenever you commit to this repository, GitHub Pages will run [Jekyll](https://jekyllrb.com/) to rebuild the pages in your site, from the content in your Markdown files.
+Run the makefile in the experment_1_stop_by_instructions folder. You can then run the experiment executable. The experiment executable takes in the program path, then any programs you want to debug. You will first need to make the program you want. The program should be an executable. The program first displays sources files related to the executable, then it displays the thread ID, instruction address, file path and line number. 
 
-### Markdown
 
-Markdown is a lightweight and easy-to-use syntax for styling your writing. It includes conventions for
-
-```markdown
-Syntax highlighted code block
-
-# Header 1
-## Header 2
-### Header 3
-
-- Bulleted
-- List
-
-1. Numbered
-2. List
-
-**Bold** and _Italic_ and `Code` text
-
-[Link](url) and ![Image](src)
-```
-
-For more details see [GitHub Flavored Markdown](https://guides.github.com/features/mastering-markdown/).
-
-### Jekyll Themes
-
-Your Pages site will use the layout and styles from the Jekyll theme you have selected in your [repository settings](https://github.com/Dkyse/213_Project_debugger/settings). The name of this theme is saved in the Jekyll `_config.yml` configuration file.
-
-### Support or Contact
-
-Having trouble with Pages? Check out our [documentation](https://help.github.com/categories/github-pages-basics/) or [contact support](https://github.com/contact) and we’ll help you sort it out.
+Example Letter Count program:
+Letter count uses threads to count the number of letters in an input file.
+Run make file in example folder
+Run make file in experment_1_stop_by_instructions folder
+run experiment ../example/lettercount 4 ../example/inputs/input1.txt
+press enter
