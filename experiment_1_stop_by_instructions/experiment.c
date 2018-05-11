@@ -180,7 +180,7 @@ int main(int argc, char** argv)  {
 
       }
 
-      ptrace(PTRACE_SYSCALL, current, NULL, NULL);
+      ptrace(PTRACE_SINGLESTEP, current, NULL, NULL);
     }
   }
 
