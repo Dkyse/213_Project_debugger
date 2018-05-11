@@ -4,6 +4,8 @@ Derek Wang, Shida Jing, David Asanza
 ## General Instructions:
 Run the makefile in the experment_1_stop_by_instructions folder. You can then run the experiment executable. The experiment executable first takes in the program path, then any command line inputs that the program requires. The program should be an executable. The experiment first displays sources files related to the executable, then it displays the thread ID, instruction address, file path and line number. To advance the debugger, press enter.
 
+To get help, just type experiment
+
 
 ## Example Letter Count program:
 Letter count uses threads to count the number of letters in an input file.  
