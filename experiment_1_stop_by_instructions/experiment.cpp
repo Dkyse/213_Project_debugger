@@ -125,15 +125,18 @@ void break_at_main(pid_t child, shared_obj &main_obj) {
       // TODO error check
       ptrace(PTRACE_GETREGS, child, NULL, &regs);
       // possible breakpoint location
-      prev_ip = regs.rip - 1;
+      prev_ip = main_obj.relative_ip_offset(regs.rip - 1);
+      printf("NOT MAIN\n");
+      printf("ADDR: %lx | PREV: %lx\n", main_entry->address, prev_ip);
+      getchar();
     } while(main_entry->address != prev_ip);
     // Breakpoint reached, reset ip to that location
-    regs.rip = prev_ip;
+    regs.rip =  main_obj.absolute_ip_offset(prev_ip);
     ptrace(PTRACE_SETREGS, child, NULL, &regs);
     // restore bp instruction
     bp.disable();
   } catch(std::out_of_range &e) {
-    fprintf(stderr, "'%s' main function not found", main_obj.get_name().c_str());
+    fprintf(stderr, "'%s' main function not found\n", main_obj.get_name().c_str());
   }
 }
 
