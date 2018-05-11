@@ -1,37 +1,41 @@
-## Welcome to GitHub Pages
+# 213 Project Debugger Instructions
 
-You can use the [editor on GitHub](https://github.com/Dkyse/213_Project_debugger/edit/master/README.md) to maintain and preview the content for your website in Markdown files.
+## General Instructions:
+Run the makefile in the `experiment_1_stop_by_instructions` folder. You can then run the experiment executable. The experiment executable first takes in the program path, then any command line inputs that the program requires. The program should be an executable. The experiment first displays sources files related to the executable, then it displays the thread ID, instruction address, file path and line number. To advance the debugger, press enter.
 
-Whenever you commit to this repository, GitHub Pages will run [Jekyll](https://jekyllrb.com/) to rebuild the pages in your site, from the content in your Markdown files.
+To get help, just type `experiment`
 
-### Markdown
 
-Markdown is a lightweight and easy-to-use syntax for styling your writing. It includes conventions for
+## Example Letter Count program:
+Source: `example` program is Derek's assignment 4 letter count program.
 
-```markdown
-Syntax highlighted code block
-
-# Header 1
-## Header 2
-### Header 3
-
-- Bulleted
-- List
-
-1. Numbered
-2. List
-
-**Bold** and _Italic_ and `Code` text
-
-[Link](url) and ![Image](src)
+- Letter count uses threads to count the number of letters in an input file.  
+- Run `make` file in `example` folder  
+- Run `make` file in `experiment_1_stop_by_instructions` folder  
+- To run our visualizer on the `example` program run
 ```
+experiment ../example/lettercount 4 ../example/inputs/input1.txt1
+```
+- Press enter to step through the execution of `example`
 
-For more details see [GitHub Flavored Markdown](https://guides.github.com/features/mastering-markdown/).
+## Expected Sample Output:
+```sh
+SHARED OBJECT TABLE:  
+400000-40e000	2 /home/wangdere/Desktop/CSC213/213_Project_debugger/experiment_1_stop_by_instructions/experiment  
+60d000-60f000	2 /home/wangdere/Desktop/CSC213/213_Project_debugger/experiment_1_stop_by_instructions/experiment  
+7f1eeb8be000-7f1eeb8e1000	2 /lib/x86_64-linux-gnu/ld-2.24.so  
+7f1eebae1000-7f1eebae3000	2 /lib/x86_64-linux-gnu/ld-2.24.so  
+MAIN: 400e86  
 
-### Jekyll Themes
+--- <0>  
+/home/wangdere/Desktop/CSC213/213_Project_debugger/example/lettercount.c      38            0x400a00  
+/home/wangdere/Desktop/CSC213/213_Project_debugger/example/lettercount.c      39            0x400a16  
 
-Your Pages site will use the layout and styles from the Jekyll theme you have selected in your [repository settings](https://github.com/Dkyse/213_Project_debugger/settings). The name of this theme is saved in the Jekyll `_config.yml` configuration file.
+Thread ID (PID): 32488 | Instruction address: 400ece  
+File path: /home/wangdere/Desktop/CSC213/213_Project_debugger/example/lettercount.c  
+Called from line 110  
 
-### Support or Contact
-
-Having trouble with Pages? Check out our [documentation](https://help.github.com/categories/github-pages-basics/) or [contact support](https://github.com/contact) and we’ll help you sort it out.
+Thread ID (PID): 32488 | Instruction address: 400f18  
+File path: /home/wangdere/Desktop/CSC213/213_Project_debugger/example/lettercount.c  
+Called from line 113  
+```
