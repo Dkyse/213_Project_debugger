@@ -3,10 +3,19 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <sys/ptrace.h>
+#include <unistd.h>
 
 #include "shared_object.hh"
 
-shared_obj::shared_obj(std::string file_path, int file_descriptor, intptr_t addr_start, intptr_t addr_end) {
+shared_obj::shared_obj(std::string file_path, intptr_t addr_start, intptr_t addr_end) {
+
+  int fd = open(file_path.c_str(), O_RDONLY);
+
+  // Check if this is a readable file
+  if( fd == -1 ) {
+    throw std::invalid_argument{"Cannot open file '" + file_path + "'"};
+  }
+
   // file exists
   this->name = file_path;
 
@@ -15,7 +24,7 @@ shared_obj::shared_obj(std::string file_path, int file_descriptor, intptr_t addr
 
   // Get compilation units for this file
   try {
-    elf::elf elf(elf::create_mmap_loader(file_descriptor));
+    elf::elf elf(elf::create_mmap_loader(fd));
     dwarf::dwarf dwarf(dwarf::elf::create_loader(elf));
     this->type = elf.get_hdr().type;
     this->compilation_units = dwarf.compilation_units();
@@ -23,6 +32,8 @@ shared_obj::shared_obj(std::string file_path, int file_descriptor, intptr_t addr
   } catch(dwarf::format_error& e) {
     this->has_compilation_units = false;
   }
+
+  close(fd);
 }
 
 /**

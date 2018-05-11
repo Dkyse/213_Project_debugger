@@ -9,7 +9,7 @@
 
 class shared_obj {
 public:
-  shared_obj(std::string file_path, int file_descriptor, intptr_t addr_start, intptr_t addr_end);
+  shared_obj(std::string file_path, intptr_t addr_start, intptr_t addr_end);
 
   auto has_cus() const -> bool { return has_compilation_units; }
   auto get_name() const -> std::string { return name; }

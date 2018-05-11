@@ -74,17 +74,16 @@ int populate_shared_objs(pid_t child, vector<shared_obj> &objects) {
     if (name_end > name_start)  {
       name = string (line + name_start, name_end - name_start);
 
-      int fd = open(name.c_str(), O_RDONLY);
-
-      /* Check if entry is a readable file */
-      if( fd != -1 ) {
-        // file exists, create shared object
-        shared_obj obj (name, fd, addr_start, addr_end);
+      /* Create a new shared object from this entry */
+      try {
+        shared_obj obj (name, addr_start, addr_end);
 
         // Add object to vector
         objects.push_back(obj);
+      } catch(std::invalid_argument &e) {
+        // shared_obj will throw an exception when name is not a valid file,
+        //   which we can safely ignore
       }
-      close(fd);
     }
   } /* end of while */
 
@@ -105,39 +104,44 @@ void break_at_main(pid_t child, shared_obj &main_obj) {
   // To store debuggee status
   struct user_regs_struct regs;
 
+  dwarf::line_table::entry main_entry;
+
   try {
     // Get main function line table entry
-    auto main_entry = main_obj.get_line_entry_from_function("main");
-    // TODO remove
-    printf("MAIN: %lx\n\n", main_entry->address);
-    main_obj.dump_all_line_tables();
-    getchar();
-    printf("\n\n");
-    // Set breakpoint
-    breakpoint bp {child, main_obj.absolute_ip_offset(main_entry->address)};
-    bp.enable();
-    // Continue until we reach the breakpoint
-    intptr_t prev_ip;
-    do {
-      ptrace(PTRACE_CONT, child, NULL, NULL);
-      // TODO error check
-      waitpid(child, &status, 0);
-      // TODO error check
-      ptrace(PTRACE_GETREGS, child, NULL, &regs);
-      // possible breakpoint location
-      prev_ip = main_obj.relative_ip_offset(regs.rip - 1);
-      printf("NOT MAIN\n");
-      printf("ADDR: %lx | PREV: %lx\n", main_entry->address, prev_ip);
-      getchar();
-    } while(main_entry->address != prev_ip);
-    // Breakpoint reached, reset ip to that location
-    regs.rip =  main_obj.absolute_ip_offset(prev_ip);
-    ptrace(PTRACE_SETREGS, child, NULL, &regs);
-    // restore bp instruction
-    bp.disable();
+    main_entry = *main_obj.get_line_entry_from_function("main");
   } catch(std::out_of_range &e) {
     fprintf(stderr, "'%s' main function not found\n", main_obj.get_name().c_str());
+    return;
   }
+
+  // TODO remove
+  printf("MAIN: %lx\n\n", main_entry.address);
+  main_obj.dump_all_line_tables();
+  getchar();
+  printf("\n\n");
+
+  // Set breakpoint
+  breakpoint bp {child, main_obj.absolute_ip_offset(main_entry.address)};
+  bp.enable();
+
+  // Continue until we reach the breakpoint
+  intptr_t prev_ip;
+  do {
+    ptrace(PTRACE_CONT, child, NULL, NULL);
+    // TODO error check
+    waitpid(child, &status, 0);
+    // TODO error check
+    ptrace(PTRACE_GETREGS, child, NULL, &regs);
+    // possible breakpoint location
+    prev_ip = main_obj.relative_ip_offset(regs.rip - 1);
+  } while(main_entry.address != prev_ip);
+
+  // Breakpoint reached, reset ip to that location
+  regs.rip =  main_obj.absolute_ip_offset(prev_ip);
+  ptrace(PTRACE_SETREGS, child, NULL, &regs);
+
+  // restore breakpoint instruction
+  bp.disable();
 }
 
 /**
