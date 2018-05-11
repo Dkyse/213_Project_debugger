@@ -1,9 +1,8 @@
-# 213 Project Debugger README
-
+# 213 Project Debugger Instructions
 Derek Wang, Shida Jing, David Asanza
 
 ## General Instructions:
-Run the makefile in the experment_1_stop_by_instructions folder. You can then run the experiment executable. The experiment executable takes in the program path, then any programs you want to debug. You will first need to make the program you want. The program should be an executable. The program first displays sources files related to the executable, then it displays the thread ID, instruction address, file path and line number. 
+Run the makefile in the experment_1_stop_by_instructions folder. You can then run the experiment executable. The experiment executable first takes in the program path, then any command line inputs that the program requires. The program should be an executable. The experiment first displays sources files related to the executable, then it displays the thread ID, instruction address, file path and line number. To advance the debugger, press enter.
 
 
 ## Example Letter Count program:
