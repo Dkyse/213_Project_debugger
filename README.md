@@ -3,18 +3,20 @@
 ## General Instructions:
 Run the makefile in the experment_1_stop_by_instructions folder. You can then run the experiment executable. The experiment executable first takes in the program path, then any command line inputs that the program requires. The program should be an executable. The experiment first displays sources files related to the executable, then it displays the thread ID, instruction address, file path and line number. To advance the debugger, press enter.
 
-To get help, just type experiment
+To get help, just type `experiment`
 
 
 ## Example Letter Count program:
+Source: Example program is Derek's assignment 4 letter count program.
+
 Letter count uses threads to count the number of letters in an input file.  
 Run make file in example folder  
 Run make file in experment_1_stop_by_instructions folder  
-run experiment with the example program  
-[experiment ../example/lettercount 4 ../example/inputs/input1.txt]  
+run experiment with the example program `experiment ../example/lettercount 4 ../example/inputs/input1.txt1`
 press enter to advance  
 
 ## Expected Sample Output:
+```sh
 SHARED OBJECT TABLE:  
 400000-40e000	2 /home/wangdere/Desktop/CSC213/213_Project_debugger/experiment_1_stop_by_instructions/experiment  
 60d000-60f000	2 /home/wangdere/Desktop/CSC213/213_Project_debugger/experiment_1_stop_by_instructions/experiment  
@@ -33,5 +35,4 @@ Called from line 110
 Thread ID (PID): 32488 | Instruction address: 400f18  
 File path: /home/wangdere/Desktop/CSC213/213_Project_debugger/example/lettercount.c  
 Called from line 113  
-
-
+```
