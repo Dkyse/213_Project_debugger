@@ -9,7 +9,7 @@ typedef struct args{
 }arg_t;
 
 //this function has an intentional deadlock
-//it will 
+//it forgot to unlock its lock.
 void * threadA(void * args){
   arg_t * temp = (arg_t *) args;
 
@@ -24,7 +24,7 @@ void * threadA(void * args){
 //5 threads are created, they each increment a shared counter.
 //this program contains a lock to protect the shared count
 //But the program has forgotten to unlock its lock!
-//there's a concurrency error!
+//there's a deadlock error!
 
 int main(int argc, char** argv)  {
   

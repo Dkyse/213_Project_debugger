@@ -1,6 +1,5 @@
 ROOT = ..
-TARGETS = helloworld
-
+TARGETS = testing
 LIBS = pthread
 
 include $(ROOT)/common.mk
