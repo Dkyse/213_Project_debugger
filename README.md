@@ -7,16 +7,16 @@ To get help, just type `experiment`
 
 
 ## Example Letter Count program:
-Source: `example` program is Derek's assignment 4 letter count program.
+Source: `sample` program is Derek's assignment 4 letter count program.
 
 - Letter count uses threads to count the number of letters in an input file.  
-- Run `make` file in `example` folder  
+- Run `make` file in `sample` folder  
 - Run `make` file in `experiment_1_stop_by_instructions` folder  
-- To run our visualizer on the `example` program run
+- To run our visualizer on the `sample` program run
 ```
-experiment ../example/lettercount 4 ../example/inputs/input1.txt1
+experiment ../sample/lettercount 4 ../sample/inputs/input1.txt1
 ```
-- Press enter to step through the execution of `example`
+- Press enter to step through the execution of `sample`
 
 ## Expected Sample Output:
 ```sh
