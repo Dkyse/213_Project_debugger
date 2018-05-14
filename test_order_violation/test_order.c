@@ -54,8 +54,8 @@ int main(int argc, char** argv)  {
   pthread_mutex_init(&order.m1, NULL);
 
   // Create threads
-  pthread_create(&threads[0], NULL, threadB, (void*)  &order);
-  pthread_create(&threads[1], NULL, threadA, (void*)  &order);
+  pthread_create(&threads[0], NULL, threadA, (void*)  &order);
+  pthread_create(&threads[1], NULL, threadB, (void*)  &order);
 
   // Join threads
   pthread_join(threads[0], NULL);
