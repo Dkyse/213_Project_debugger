@@ -113,12 +113,12 @@ void break_at_main(pid_t child, shared_obj &main_obj) {
     main_entry = *main_obj.get_line_entry_from_function("main");
   } catch(std::out_of_range &e) {
     // Continue execution if no main function is not found
-    fprintf(stderr, "'%s' main function not found\n", main_obj.get_name().c_str());
+    fprintf(stderr, "'%s' main function not found\n", main_obj.get_path().c_str());
     return;
   }
 
   // Set breakpoint
-  breakpoint bp {child, main_obj.absolute_ip_offset(main_entry.address)};
+  breakpoint bp {child, main_obj.obj_off_to_sys_mem(main_entry.address)};
   bp.enable();
 
   // Continue until we reach the breakpoint
@@ -140,11 +140,11 @@ void break_at_main(pid_t child, shared_obj &main_obj) {
       exit(EXIT_FAILURE);
     }
     // possible breakpoint location
-    prev_ip = main_obj.relative_ip_offset(regs.rip - 1);
+    prev_ip = main_obj.sys_mem_to_obj_off(regs.rip - 1);
   } while(main_entry.address != prev_ip);
 
   // Breakpoint reached, reset ip to that location
-  regs.rip =  main_obj.absolute_ip_offset(prev_ip);
+  regs.rip =  main_obj.obj_off_to_sys_mem(prev_ip);
   ptrace(PTRACE_SETREGS, child, NULL, &regs);
 
   // restore breakpoint instruction
@@ -171,11 +171,11 @@ bool print_line_info(shared_obj &obj, intptr_t rip) {
       found = true;
     } catch(std::out_of_range &e) {
       /* Line was not found */
-      printf("File path: %s\n", obj.get_name().c_str());
+      printf("File path: %s\n", obj.get_path().c_str());
       printf("No line numbers found.\n\n");
     }
   } else {
-    printf("File path: %s\n", obj.get_name().c_str());
+    printf("File path: %s\n", obj.get_path().c_str());
     printf("No debug information available.\n\n");
   }
   return found;
@@ -234,14 +234,6 @@ int main(int argc, char** argv)  {
       exit(EXIT_FAILURE);
     }
 
-    // TODO remove
-    printf("SHARED OBJECT TABLE:\n");
-    for (auto obj : shared_objs) {
-      obj.print_string_form();
-    }
-    getchar();
-    printf("\n\n");
-
     /* Set breakpoint for child's main function. */
     // We assume the main executable is the first entry of the maps table
     break_at_main(child, shared_objs[0]);
@@ -255,6 +247,9 @@ int main(int argc, char** argv)  {
       exit(EXIT_FAILURE);
     }
 
+    // Begin tracing child's execution
+    printf("Executing '%s'\n\n", inputs[0]);
+
     while (true)  {
       // Wait for any of the child's threads to change status
       pid_t current = waitpid(-1, &status, 0);
@@ -264,11 +259,11 @@ int main(int argc, char** argv)  {
         break;
       }
 
+      /* Note: We skip error checking of ptrace calls, because any error will be
+           caught by waitpid in the next loop iteration. */
+
       // Get current thread's register contents
-      if (ptrace(PTRACE_GETREGS, current, NULL, &regs) == -1) {
-        perror("Error in ptrace with PTRACE_GETREGS");
-        exit(EXIT_FAILURE);
-      }
+      ptrace(PTRACE_GETREGS, current, NULL, &regs);
 
       /*For each instruction call, determine which source file it comes from
       * by walking through the shared_obj vector
@@ -287,10 +282,7 @@ int main(int argc, char** argv)  {
       }
 
       // Advance the current thread a single instruction
-      if (ptrace(PTRACE_SINGLESTEP, current, NULL, NULL) == -1) {
-        perror("Error in ptrace with PTRACE_SINGLESTEP");
-        exit(EXIT_FAILURE);
-      }
+      ptrace(PTRACE_SINGLESTEP, current, NULL, NULL);
     }
   }
 
