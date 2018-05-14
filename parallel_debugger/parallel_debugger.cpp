@@ -1,8 +1,3 @@
-/**
-* Sources:
-* https://stackoverflow.com/questions/36523584/how-to-see-memory-layout-of-my-program-in-c-during-run-time/36524010
-*/
-
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
 #endif
@@ -34,13 +29,20 @@ using std::vector;
 using std::string;
 
 /**
-* [populate_shared_objs description]
-* Source:
-* https://stackoverflow.com/questions/36523584/how-to-see-memory-layout-of-my-program-in-c-during-run-time/36524010
-*/
+ * Parses a /proc/<pid>/maps file to determine the virtual memory locations of
+ * the shared objects linked to the main executable, and stores that information
+ * in the given shared_obj vector.
+ * @param  child   the pid of the process traced being
+ * @param  objects a vector to store the parsed information
+ * @return         0 if the maps file was processed correctly, 0 on failure.
+ * Source:
+ * https://stackoverflow.com/questions/36523584/how-to-see-memory-layout-of-my-program-in-c-during-run-time/36524010
+ */
 int populate_shared_objs(pid_t child, vector<shared_obj> &objects) {
   char* line = NULL;
   size_t size = 0;
+
+  // Open maps file
   char maps_path[128];
   snprintf(maps_path, 128, "/proc/%d/maps", child);
   FILE* maps = fopen(maps_path, "r");
@@ -94,31 +96,26 @@ int populate_shared_objs(pid_t child, vector<shared_obj> &objects) {
 }
 
 /**
-* [break_at_main description]
-* @param child    [description]
-* @param main_obj [description]
+* Sets a break point at the child's main function, and advances the child's
+* execution until the main function is reached.
+* @param child    the pid of the traced process
+* @param main_obj the shared object corresponding to the file containing the
+*                 child's main function
 */
 void break_at_main(pid_t child, shared_obj &main_obj) {
-  // To store waitpid status
-  int status;
   // To store debuggee status
   struct user_regs_struct regs;
 
   dwarf::line_table::entry main_entry;
 
+  // Get main function line table entry
   try {
-    // Get main function line table entry
     main_entry = *main_obj.get_line_entry_from_function("main");
   } catch(std::out_of_range &e) {
+    // Continue execution if no main function is not found
     fprintf(stderr, "'%s' main function not found\n", main_obj.get_name().c_str());
     return;
   }
-
-  // TODO remove
-  printf("MAIN: %lx\n\n", main_entry.address);
-  main_obj.dump_all_line_tables();
-  getchar();
-  printf("\n\n");
 
   // Set breakpoint
   breakpoint bp {child, main_obj.absolute_ip_offset(main_entry.address)};
@@ -127,11 +124,21 @@ void break_at_main(pid_t child, shared_obj &main_obj) {
   // Continue until we reach the breakpoint
   intptr_t prev_ip;
   do {
-    ptrace(PTRACE_CONT, child, NULL, NULL);
-    // TODO error check
-    waitpid(child, &status, 0);
-    // TODO error check
-    ptrace(PTRACE_GETREGS, child, NULL, &regs);
+    // Allow child to continue until the next state change
+    if (ptrace(PTRACE_CONT, child, NULL, NULL) == -1) {
+      perror("Error in ptrace with PTRACE_CONT");
+      exit(EXIT_FAILURE);
+    }
+    // Wait for child to change state
+    if (waitpid(child, NULL, 0) == -1) {
+      perror("Error in waitpid");
+      exit(EXIT_FAILURE);
+    }
+    // Get child's register contents
+    if (ptrace(PTRACE_GETREGS, child, NULL, &regs) == -1) {
+      perror("Error in ptrace with PTRACE_GETREGS");
+      exit(EXIT_FAILURE);
+    }
     // possible breakpoint location
     prev_ip = main_obj.relative_ip_offset(regs.rip - 1);
   } while(main_entry.address != prev_ip);
@@ -182,8 +189,6 @@ int main(int argc, char** argv)  {
     exit(EXIT_FAILURE);
   }
 
-  char* user_program = argv[1];
-
   // Process command line inputs to pass them to execv
   char* inputs[argc];
   inputs[0] = argv[1];
@@ -197,7 +202,6 @@ int main(int argc, char** argv)  {
 
   /* debuggee */
   pid_t child;
-
   child = fork();
 
   if (child == -1)  {
@@ -205,18 +209,20 @@ int main(int argc, char** argv)  {
     exit(EXIT_FAILURE);
   } else if (child == 0) {
 
-    /* we are in the child program. Run the debuggee */
+    /* In the child program. Run the debuggee */
     ptrace(PTRACE_TRACEME, 0, NULL, NULL);
     execv(inputs[0], inputs);
 
   } else {
 
-    /* we are in the parent program. Run the debugger */
+    /* In the parent program. Run the debugger */
 
     /* Wait for child to execute new process */
-    // TODO ask Derek how to wait for clone/fork/exec
     int status;
-    pid_t ret = waitpid(child, &status, 0);
+    if (waitpid(child, &status, 0) == -1) {
+      perror("Error in waitpid");
+      exit(EXIT_FAILURE);
+    }
 
     // Enable tracing new threads
     ptrace(PTRACE_SETOPTIONS, child, NULL, PTRACE_O_TRACEFORK | PTRACE_O_TRACEVFORK | PTRACE_O_TRACECLONE);
@@ -236,7 +242,6 @@ int main(int argc, char** argv)  {
     getchar();
     printf("\n\n");
 
-
     /* Set breakpoint for child's main function. */
     // We assume the main executable is the first entry of the maps table
     break_at_main(child, shared_objs[0]);
@@ -245,21 +250,28 @@ int main(int argc, char** argv)  {
     struct user_regs_struct regs;
 
     /* Advance to child's next instruction */
-    ptrace(PTRACE_SINGLESTEP, child, NULL, NULL);
+    if (ptrace(PTRACE_SINGLESTEP, child, NULL, NULL) == -1) {
+      perror("Error in ptrace with PTRACE_SINGLESTEP");
+      exit(EXIT_FAILURE);
+    }
 
-    while (1)  {
-      pid_t current = waitpid(-1, &status, P_ALL);
-      // TODO account for multiple threads exiting
-      if(current == -1){
+    while (true)  {
+      // Wait for any of the child's threads to change status
+      pid_t current = waitpid(-1, &status, 0);
+
+      // Check whether all threads haves exited
+      if (current == -1){
         break;
       }
 
-      // TODO error check
-      ptrace(PTRACE_GETREGS, current, NULL, &regs);
-      /* We don't know how to recover from this if ptrace fails. So we break */
+      // Get current thread's register contents
+      if (ptrace(PTRACE_GETREGS, current, NULL, &regs) == -1) {
+        perror("Error in ptrace with PTRACE_GETREGS");
+        exit(EXIT_FAILURE);
+      }
 
-      /* for each instruction call, determine which source file it comes from
-      * by walking through the shared_obj table
+      /*For each instruction call, determine which source file it comes from
+      * by walking through the shared_obj vector
       */
       for (auto obj : shared_objs) {
         /* if a file is found, check line table for that instruction */
@@ -274,7 +286,11 @@ int main(int argc, char** argv)  {
         }
       }
 
-      ptrace(PTRACE_SINGLESTEP, current, NULL, NULL);
+      // Advance the current thread a single instruction
+      if (ptrace(PTRACE_SINGLESTEP, current, NULL, NULL) == -1) {
+        perror("Error in ptrace with PTRACE_SINGLESTEP");
+        exit(EXIT_FAILURE);
+      }
     }
   }
 
