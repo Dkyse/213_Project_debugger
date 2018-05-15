@@ -1,9 +1,9 @@
 # 213 Project Debugger Instructions
 
 ## General Instructions:
-Run the makefile in the `experiment_1_stop_by_instructions` folder. You can then run the experiment executable. The experiment executable first takes in the program path, then any command line inputs that the program requires. The program should be an executable. The experiment first displays sources files related to the executable, then it displays the thread ID, instruction address, file path and line number. To advance the debugger, press enter.
+Run the makefile in the `parallel_debugger` folder. You can then run the parallel_debugger executable. The parallel_debugger executable first takes in the program path, then any command line inputs that the program requires. The program should be an executable. The parallel_debugger first displays sources files related to the executable, then it displays the thread ID, instruction address, file path and line number. To advance the debugger, press enter.
 
-To get help, just type `experiment`
+To get help, just type `parallel_debugger`
 
 
 ## Example Letter Count program:
@@ -11,10 +11,10 @@ Source: `sample` program is Derek's assignment 4 letter count program.
 
 - Letter count uses threads to count the number of letters in an input file.  
 - Run `make` file in `sample` folder  
-- Run `make` file in `experiment_1_stop_by_instructions` folder  
+- Run `make` file in `parallel_debugger` folder  
 - To run our visualizer on the `sample` program run
 ```
-experiment ../sample/lettercount 4 ../sample/inputs/input1.txt1
+parallel_debugger ../sample/lettercount 4 ../sample/inputs/input1.txt1
 ```
 - Press enter to step through the execution of `sample`
 
