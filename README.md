@@ -1,10 +1,10 @@
 # 213 Project Debugger Instructions
 
 ## General Instructions:
-Run the makefile in the `parallel_debugger` folder. You can then run the parallel_debugger executable. The parallel_debugger executable first takes in the program path, then any command line inputs that the program requires. The program should be an executable. The parallel_debugger first displays sources files related to the executable, then it displays the thread ID, instruction address, file path and line number. To advance the debugger, press enter.
-
-To get help, just type `parallel_debugger`
-
+1. To compile the code, run the `make` in the `parallel_debugger` folder. You can then run the `parallel_debugger` executable.
+2. The `parallel_debugger` executable takes the program path as its first argument, then any command line inputs that should be passed to the program.
+3. For each instruction run by the program, the `parallel_debugger` displays the thread ID, instruction address, file path and line number.
+4. To advance the debugger, press enter. When a line number cannot be found, `parallel_debugger` advances automatically to the next instruction.
 
 ## Example Letter Count program:
 Source: `sample` program is Derek's assignment 4 letter count program.
@@ -20,22 +20,35 @@ parallel_debugger ../sample/lettercount 4 ../sample/inputs/input1.txt1
 
 ## Expected Sample Output:
 ```sh
-SHARED OBJECT TABLE:  
-400000-40e000	2 /home/wangdere/Desktop/CSC213/213_Project_debugger/experiment_1_stop_by_instructions/experiment  
-60d000-60f000	2 /home/wangdere/Desktop/CSC213/213_Project_debugger/experiment_1_stop_by_instructions/experiment  
-7f1eeb8be000-7f1eeb8e1000	2 /lib/x86_64-linux-gnu/ld-2.24.so  
-7f1eebae1000-7f1eebae3000	2 /lib/x86_64-linux-gnu/ld-2.24.so  
-MAIN: 400e86  
+Executing '/path/to/213_Project_debugger/sample/lettercount'
 
---- <0>  
-/home/wangdere/Desktop/CSC213/213_Project_debugger/example/lettercount.c      38            0x400a00  
-/home/wangdere/Desktop/CSC213/213_Project_debugger/example/lettercount.c      39            0x400a16  
+Thread ID (PID): 26986 | Instruction address: 400c7d
+File path: /path/to/213_Project_debugger/sample/lettercount.c
+Called from line 103
 
-Thread ID (PID): 32488 | Instruction address: 400ece  
-File path: /home/wangdere/Desktop/CSC213/213_Project_debugger/example/lettercount.c  
-Called from line 110  
 
-Thread ID (PID): 32488 | Instruction address: 400f18  
-File path: /home/wangdere/Desktop/CSC213/213_Project_debugger/example/lettercount.c  
-Called from line 113  
+Thread ID (PID): 26986 | Instruction address: 400db3
+File path: /path/to/213_Project_debugger/sample/lettercount.c
+Called from line 0
+
+
+Thread ID (PID): 26986 | Instruction address: 400db6
+File path: /path/to/213_Project_debugger/sample/lettercount.c
+Called from line 0
+
+
+Thread ID (PID): 26986 | Instruction address: 400c10
+File path: /path/to/213_Project_debugger/sample/lettercount.c
+Called from line 95
+
+
+Thread ID (PID): 26986 | Instruction address: 400c11
+File path: /path/to/213_Project_debugger/sample/lettercount.c
+Called from line 95
+
+
+Thread ID (PID): 26986 | Instruction address: 400c14
+File path: /path/to/213_Project_debugger/sample/lettercount.c
+Called from line 96
+
 ```
